@@ -47,6 +47,8 @@ PaperPet 使用声明式的 `.zpet` 角色包。角色的图片、动作状态�
 
 角色包从 PaperPet 设置页安装。安装过程会检查包的结构、版本和资源范围，不执行角色包中的脚本。首版角色包格式见 [角色包格式说明](docs/character-pack.schema.json)。
 
+想制作自己的角色，可以参考 [自定义角色包指南](docs/character-pack-creation.md)。指南提供了文件结构、manifest 模板、动作映射、打包方式和安装测试步骤。
+
 仓库提供了一个可以直接安装的完整示例包 [Chiikawa Study Companion](examples/character-packs/chiikawa-study-companion.zpet)。它包含待机、阅读、思考、批注、睡眠和暂离六种静态动作，安装说明与素材声明见 [示例角色包说明](examples/character-packs/README.md)。
 
 ### 六种示例动作

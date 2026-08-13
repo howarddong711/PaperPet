@@ -2,6 +2,8 @@
 
 这里提供一个可以直接安装的 `.zpet` 示例，用来展示 PaperPet 的角色包格式和状态映射。
 
+想从头制作自己的角色包，可以先阅读 [自定义角色包指南](../../docs/character-pack-creation.md)。
+
 [下载 Chiikawa Study Companion](chiikawa-study-companion.zpet)
 
 这个角色包包含六个静态动作
