@@ -1,0 +1,41 @@
+{
+  "name": "paperpet",
+  "type": "module",
+  "version": "0.3.0",
+  "private": true,
+  "description": "A quiet desktop reading companion for Zotero.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/howarddong711/PaperPet.git"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "config": {
+    "addonName": "PaperPet",
+    "addonID": "paperpet@howarddong711.github.io",
+    "addonRef": "paperpet",
+    "prefsPrefix": "extensions.zotero.paperpet"
+  },
+  "scripts": {
+    "start": "zotero-plugin serve",
+    "build": "zotero-plugin build && tsc --noEmit",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test typings zotero-plugin.config.ts && prettier --check package.json tsconfig.json eslint.config.mjs zotero-plugin.config.ts 'src/**/*.ts' 'test/**/*.ts' 'typings/**/*.ts' 'addon/**/*.{js,json,css}'",
+    "lint:fix": "eslint src test typings zotero-plugin.config.ts --fix && prettier --write package.json tsconfig.json eslint.config.mjs zotero-plugin.config.ts 'src/**/*.ts' 'test/**/*.ts' 'typings/**/*.ts' 'addon/**/*.{js,json,css}'"
+  },
+  "overrides": {
+    "adm-zip": "^0.6.0"
+  },
+  "devDependencies": {
+    "@zotero-plugin/eslint-config": "0.6.7",
+    "eslint": "^9.39.2",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10",
+    "zotero-plugin-scaffold": "^0.8.8",
+    "zotero-types": "^4.1.3"
+  }
+}

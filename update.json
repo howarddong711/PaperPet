@@ -1,0 +1,18 @@
+{
+  "addons": {
+    "paperpet@howarddong711.github.io": {
+      "updates": [
+        {
+          "version": "0.3.0",
+          "update_link": "https://github.com/howarddong711/PaperPet/releases/download/v0.3.0/PaperPet.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "9.0",
+              "strict_max_version": "9.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

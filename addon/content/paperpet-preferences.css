@@ -1,0 +1,201 @@
+#paperpet-preferences {
+  overflow: auto;
+}
+
+.paperpet-preferences {
+  box-sizing: border-box;
+  max-width: 880px;
+  padding: 32px 40px 36px;
+  color: #242521;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  .paperpet-preferences {
+    color: #f0ece3;
+  }
+}
+
+.paperpet-preferences__header {
+  border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  margin-bottom: 30px;
+  padding-bottom: 22px;
+}
+
+.paperpet-preferences__eyebrow {
+  color: #657568;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.paperpet-preferences h1 {
+  margin: 8px 0 10px;
+  font-size: 32px;
+  line-height: 1.1;
+}
+
+.paperpet-preferences h2 {
+  border-bottom: 2px solid #809785;
+  margin: 0 0 18px;
+  padding-bottom: 10px;
+  font-size: 18px;
+}
+
+.paperpet-preferences p {
+  margin: 0;
+  color: color-mix(in srgb, currentColor 68%, transparent);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.paperpet-preferences__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 34px 48px;
+}
+
+.paperpet-preferences__section {
+  min-width: 0;
+}
+
+.paperpet-preference {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px 14px;
+  margin: 0 0 20px;
+  font-size: 14px;
+}
+
+.paperpet-preference > span:first-child {
+  align-self: center;
+}
+
+.paperpet-preference output {
+  color: #607864;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.paperpet-preference input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: #5d8068;
+}
+
+.paperpet-preference--toggle {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 10px;
+}
+
+.paperpet-preference--toggle input {
+  margin-top: 2px;
+  accent-color: #397fd9;
+}
+
+.paperpet-preference--toggle strong,
+.paperpet-preference--toggle small {
+  display: block;
+}
+
+.paperpet-preference--toggle small {
+  margin-top: 4px;
+  color: color-mix(in srgb, currentColor 62%, transparent);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.paperpet-preferences__note {
+  border-left: 2px solid #809785;
+  margin-top: 4px !important;
+  padding-left: 10px;
+}
+
+.paperpet-preferences__tools {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 28px;
+  margin-top: 34px;
+  border-top: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  padding-top: 24px;
+}
+
+.paperpet-preferences__tools h2 {
+  margin-bottom: 12px;
+}
+
+.paperpet-preferences__tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
+}
+
+.paperpet-preferences__tool-actions button {
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 6px;
+  padding: 7px 12px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.paperpet-preferences__tool-actions button:hover,
+.paperpet-preferences__tool-actions button:focus-visible {
+  border-color: #5d8068;
+  background: color-mix(in srgb, #5d8068 12%, transparent);
+  outline: none;
+}
+
+.paperpet-preferences__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 34px;
+  border-top: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  padding-top: 20px;
+}
+
+.paperpet-preferences__footer button {
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 6px;
+  padding: 7px 12px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.paperpet-preferences__footer button:hover,
+.paperpet-preferences__footer button:focus-visible {
+  border-color: #5d8068;
+  background: color-mix(in srgb, #5d8068 12%, transparent);
+}
+
+#paperpet-preferences-status {
+  color: #607864;
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .paperpet-preferences {
+    padding: 24px;
+  }
+
+  .paperpet-preferences__grid {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+
+  .paperpet-preferences__tools {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .paperpet-preferences__tool-actions {
+    justify-content: start;
+  }
+}

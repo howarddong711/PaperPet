@@ -1,0 +1,18 @@
+node_modules/
+build/
+dist/
+.scaffold/
+/output/
+.env
+.zotero-profile/
+*.xpi
+*.log
+.DS_Store
+.idea/
+.vscode/
+coverage/
+*.tsbuildinfo
+
+# Internal planning and retired prototypes are kept locally only.
+/docs/product-design.md
+/src/settings/settings-view.ts

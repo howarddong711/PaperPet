@@ -1,0 +1,19 @@
+{
+  "manifest_version": 2,
+  "name": "PaperPet",
+  "version": "__buildVersion__",
+  "description": "A quiet desktop reading companion for Zotero.",
+  "icons": {
+    "32": "content/paperpet-icon-32.png",
+    "64": "content/paperpet-icon-64.png",
+    "128": "content/paperpet-icon-128.png"
+  },
+  "applications": {
+    "zotero": {
+      "id": "paperpet@howarddong711.github.io",
+      "update_url": "https://raw.githubusercontent.com/howarddong711/PaperPet/main/update.json",
+      "strict_min_version": "9.0",
+      "strict_max_version": "9.*"
+    }
+  }
+}

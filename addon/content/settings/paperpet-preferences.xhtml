@@ -1,0 +1,188 @@
+<vbox
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+  id="paperpet-preferences"
+  flex="1"
+>
+  <html:div class="paperpet-preferences">
+    <html:header class="paperpet-preferences__header">
+      <html:span class="paperpet-preferences__eyebrow">本地偏好</html:span>
+      <html:h1>PaperPet</html:h1>
+      <html:p>调整陪伴阅读时的外观、交互和阅读状态识别方式。</html:p>
+    </html:header>
+
+    <html:div class="paperpet-preferences__grid">
+      <html:section class="paperpet-preferences__section">
+        <html:h2>宠物外观</html:h2>
+        <html:label class="paperpet-preference" for="paperpet-pet-size">
+          <html:span>宠物大小</html:span>
+          <html:output id="paperpet-pet-size-value">98px</html:output>
+          <html:input
+            id="paperpet-pet-size"
+            data-setting="petSize"
+            type="range"
+            min="48"
+            max="220"
+            step="1"
+          />
+        </html:label>
+        <html:label class="paperpet-preference" for="paperpet-pet-opacity">
+          <html:span>透明度</html:span>
+          <html:output id="paperpet-pet-opacity-value">100%</html:output>
+          <html:input
+            id="paperpet-pet-opacity"
+            data-setting="petOpacity"
+            type="range"
+            min="30"
+            max="100"
+            step="1"
+          />
+        </html:label>
+        <html:label class="paperpet-preference paperpet-preference--toggle">
+          <html:input
+            id="paperpet-reduce-motion"
+            data-setting="reduceMotion"
+            type="checkbox"
+          />
+          <html:span>
+            <html:strong>减少动态效果</html:strong>
+            <html:small>关闭呼吸和姿态过渡动画。</html:small>
+          </html:span>
+        </html:label>
+      </html:section>
+
+      <html:section class="paperpet-preferences__section">
+        <html:h2>点击与拖动</html:h2>
+        <html:label class="paperpet-preference" for="paperpet-drag-threshold">
+          <html:span>拖动判定距离</html:span>
+          <html:output id="paperpet-drag-threshold-value">6px</html:output>
+          <html:input
+            id="paperpet-drag-threshold"
+            data-setting="dragThreshold"
+            type="range"
+            min="2"
+            max="24"
+            step="1"
+          />
+        </html:label>
+        <html:label
+          class="paperpet-preference"
+          for="paperpet-double-click-delay"
+        >
+          <html:span>双击等待时间</html:span>
+          <html:output id="paperpet-double-click-delay-value"
+            >260ms</html:output
+          >
+          <html:input
+            id="paperpet-double-click-delay"
+            data-setting="doubleClickDelay"
+            type="range"
+            min="180"
+            max="500"
+            step="10"
+          />
+        </html:label>
+        <html:p class="paperpet-preferences__note">
+          按住宠物任意位置移动，位移达到阈值后只判定为拖动，不会误触发点击。
+        </html:p>
+      </html:section>
+
+      <html:section class="paperpet-preferences__section">
+        <html:h2>阅读识别</html:h2>
+        <html:label class="paperpet-preference paperpet-preference--toggle">
+          <html:input
+            id="paperpet-tracking-enabled"
+            data-setting="trackingEnabled"
+            type="checkbox"
+          />
+          <html:span>
+            <html:strong>记录阅读活动</html:strong>
+            <html:small>关闭后停止新增阅读时间和动作记录。</html:small>
+          </html:span>
+        </html:label>
+        <html:label class="paperpet-preference" for="paperpet-wpm">
+          <html:span>估计阅读速度</html:span>
+          <html:output id="paperpet-wpm-value">200 字/分</html:output>
+          <html:input
+            id="paperpet-wpm"
+            data-setting="personalWordsPerMinute"
+            type="range"
+            min="80"
+            max="600"
+            step="5"
+          />
+        </html:label>
+        <html:label class="paperpet-preference" for="paperpet-default-dwell">
+          <html:span>无文本页面默认停留</html:span>
+          <html:output id="paperpet-default-dwell-value">60 秒</html:output>
+          <html:input
+            id="paperpet-default-dwell"
+            data-setting="defaultExpectedSeconds"
+            type="range"
+            min="15"
+            max="120"
+            step="5"
+          />
+        </html:label>
+        <html:label class="paperpet-preference" for="paperpet-sleep-delay">
+          <html:span>暂离后进入睡眠</html:span>
+          <html:output id="paperpet-sleep-delay-value">15 秒</html:output>
+          <html:input
+            id="paperpet-sleep-delay"
+            data-setting="sleepDelaySeconds"
+            type="range"
+            min="5"
+            max="120"
+            step="5"
+          />
+        </html:label>
+        <html:p class="paperpet-preferences__note">
+          切到其他应用或 Zotero 标签页时，前台阅读硬门控会立即停止计时。
+        </html:p>
+      </html:section>
+
+      <html:section class="paperpet-preferences__section">
+        <html:h2>数据保留</html:h2>
+        <html:label class="paperpet-preference" for="paperpet-retention">
+          <html:span>详细动作保留天数</html:span>
+          <html:output id="paperpet-retention-value">90 天</html:output>
+          <html:input
+            id="paperpet-retention"
+            data-setting="semanticEventRetentionDays"
+            type="range"
+            min="7"
+            max="365"
+            step="1"
+          />
+        </html:label>
+        <html:p class="paperpet-preferences__note">
+          每日与论文聚合长期保留，这里只控制滚动、翻页等详细动作事件。
+        </html:p>
+      </html:section>
+    </html:div>
+
+    <html:section class="paperpet-preferences__tools">
+      <html:div>
+        <html:h2>PaperPet 工具</html:h2>
+        <html:p>
+          角色包、阅读报告和其他 PaperPet 功能统一从这里打开，不占用文献阅读区域。
+        </html:p>
+      </html:div>
+      <html:div class="paperpet-preferences__tool-actions">
+        <html:button id="paperpet-install-pack" type="button"
+          >安装角色包…</html:button
+        >
+        <html:button id="paperpet-open-report" type="button"
+          >打开阅读报告</html:button
+        >
+      </html:div>
+    </html:section>
+
+    <html:footer class="paperpet-preferences__footer">
+      <html:span id="paperpet-preferences-status"></html:span>
+      <html:button id="paperpet-preferences-reset" type="button"
+        >恢复默认设置</html:button
+      >
+    </html:footer>
+  </html:div>
+</vbox>
