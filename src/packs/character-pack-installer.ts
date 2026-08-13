@@ -19,6 +19,10 @@ interface ArchiveInventory {
   entries: string[];
   directories: Set<string>;
   stats: CharacterPackArchiveStats;
+  /** The archive path containing manifest.json (supports a single top-level folder). */
+  manifestEntry: string;
+  /** Prefix to strip when validating/installing archives wrapped in a folder. */
+  rootPrefix: string;
 }
 
 export class CharacterPackInstaller {
@@ -53,23 +57,37 @@ export class CharacterPackInstaller {
       zipReader.open(Zotero.File.pathToFile(archivePath));
       zipReader.test("");
       const inventory = this.inventoryArchive(zipReader, archiveStat.size ?? 0);
-      if (!inventory.entries.includes("manifest.json")) {
-        throw new Error("Character pack does not contain manifest.json");
-      }
-      if (zipReader.getEntry("manifest.json").realSize > MANIFEST_MAX_BYTES) {
+      if (
+        zipReader.getEntry(inventory.manifestEntry).realSize >
+        MANIFEST_MAX_BYTES
+      ) {
         throw new Error("Character pack manifest exceeds 1 MB");
       }
 
       await IOUtils.makeDirectory(extractedPath, { ignoreExisting: true });
       await this.extractArchive(zipReader, inventory, extractedPath);
+      const contentRoot = inventory.rootPrefix
+        ? PathUtils.join(extractedPath, inventory.rootPrefix.slice(0, -1))
+        : extractedPath;
+      const relativeEntries = inventory.entries
+        .filter(
+          (entry) =>
+            !inventory.rootPrefix || entry.startsWith(inventory.rootPrefix),
+        )
+        .map((entry) =>
+          inventory.rootPrefix
+            ? entry.slice(inventory.rootPrefix.length)
+            : entry,
+        )
+        .filter((entry) => entry && !entry.endsWith("/"));
       const manifest = (await IOUtils.readJSON(
-        PathUtils.join(extractedPath, "manifest.json"),
+        PathUtils.join(contentRoot, "manifest.json"),
       )) as unknown;
       const dimensions = await this.measureMaximumImageDimensions(
-        extractedPath,
-        inventory.entries,
+        contentRoot,
+        relativeEntries,
       );
-      const validation = validateCharacterPack(manifest, inventory.entries, {
+      const validation = validateCharacterPack(manifest, relativeEntries, {
         ...inventory.stats,
         ...dimensions,
       });
@@ -112,7 +130,7 @@ export class CharacterPackInstaller {
           await IOUtils.move(destination, backupPath, { noOverwrite: true });
         }
 
-        await IOUtils.move(extractedPath, destination, { noOverwrite: true });
+        await IOUtils.move(contentRoot, destination, { noOverwrite: true });
         await this.database.saveInstalledPack({
           packID: validation.manifest.id,
           version: validation.manifest.version,
@@ -222,10 +240,26 @@ export class CharacterPackInstaller {
       }
     }
 
+    const manifestCandidates = entries.filter(
+      (entry) =>
+        entry.toLowerCase().endsWith("/manifest.json") ||
+        entry.toLowerCase() === "manifest.json",
+    );
+    if (manifestCandidates.length !== 1) {
+      throw new Error("Character pack must contain exactly one manifest.json");
+    }
+    const manifestEntry = manifestCandidates[0];
+    const rootPrefix =
+      manifestEntry.toLowerCase() === "manifest.json"
+        ? ""
+        : manifestEntry.slice(0, -"manifest.json".length);
+
     return {
       entries,
       directories,
       stats: { compressedBytes, uncompressedBytes, fileCount },
+      manifestEntry,
+      rootPrefix,
     };
   }
 
