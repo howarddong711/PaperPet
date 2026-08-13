@@ -3,8 +3,8 @@
     "paperpet@howarddong711.github.io": {
       "updates": [
         {
-          "version": "0.3.2",
-          "update_link": "https://github.com/howarddong711/PaperPet/releases/download/v0.3.2/PaperPet.xpi",
+          "version": "0.3.3",
+          "update_link": "https://github.com/howarddong711/PaperPet/releases/download/v0.3.3/PaperPet.xpi",
           "applications": {
             "zotero": {
               "strict_min_version": "9.0",

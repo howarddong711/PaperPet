@@ -269,7 +269,7 @@ export class CharacterPackInstaller {
     destination: string,
   ): Promise<void> {
     for (const name of inventory.entries) {
-      const outputPath = PathUtils.joinRelative(destination, name);
+      const outputPath = joinSafeRelative(destination, name);
       if (inventory.directories.has(name.replace(/\/$/, ""))) {
         await IOUtils.makeDirectory(outputPath, {
           createAncestors: true,
@@ -299,7 +299,7 @@ export class CharacterPackInstaller {
     for (const entry of entries.filter((name) => IMAGE_PATTERN.test(name))) {
       const dimensions = await loadImageDimensions(
         this.window,
-        PathUtils.toFileURI(PathUtils.joinRelative(rootPath, entry)),
+        PathUtils.toFileURI(joinSafeRelative(rootPath, entry)),
       );
       maximumImageWidth = Math.max(maximumImageWidth, dimensions.width);
       maximumImageHeight = Math.max(maximumImageHeight, dimensions.height);
@@ -312,6 +312,21 @@ export class CharacterPackInstaller {
     }
     return { maximumImageWidth, maximumImageHeight };
   }
+}
+
+/**
+ * PathUtils.joinRelative throws NS_ERROR_FILE_UNRECOGNIZED_PATH for some
+ * forward-slash paths in Windows Zotero builds. Archive paths have already
+ * been validated, so joining one segment at a time is both safe and portable.
+ */
+function joinSafeRelative(rootPath: string, relativePath: string): string {
+  const normalizedPath = relativePath.replace(/\/$/, "");
+  if (!isSafeCharacterPackPath(normalizedPath)) {
+    throw new Error(`Unsafe character pack relative path: ${relativePath}`);
+  }
+  return normalizedPath
+    .split("/")
+    .reduce((current, segment) => PathUtils.join(current, segment), rootPath);
 }
 
 async function collectRelativeFiles(

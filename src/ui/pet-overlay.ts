@@ -409,7 +409,12 @@ export class PetOverlay {
       return;
     }
     this.characterImage.src = PathUtils.toFileURI(
-      PathUtils.joinRelative(this.characterPack.installPath, variant.asset),
+      variant.asset
+        .split("/")
+        .reduce(
+          (current, segment) => PathUtils.join(current, segment),
+          this.characterPack.installPath,
+        ),
     );
     this.characterImage.hidden = false;
     if (placeholder) {
