@@ -49,7 +49,38 @@ PaperPet 使用声明式的 `.zpet` 角色包。角色的图片、动作状态�
 
 仓库提供了一个可以直接安装的完整示例包 [Chiikawa Study Companion](examples/character-packs/chiikawa-study-companion.zpet)。它包含待机、阅读、思考、批注、睡眠和暂离六种静态动作，安装说明与素材声明见 [示例角色包说明](examples/character-packs/README.md)。
 
-![Chiikawa Study Companion 阅读动作](examples/character-packs/chiikawa-study-companion/assets/reading.png)
+### 六种示例动作
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="examples/character-packs/chiikawa-study-companion/assets/idle.png" alt="待机动作" width="180" />
+      <br />待机 <code>idle</code>
+    </td>
+    <td align="center" width="33%">
+      <img src="examples/character-packs/chiikawa-study-companion/assets/reading.png" alt="阅读动作" width="180" />
+      <br />阅读 <code>reading</code>
+    </td>
+    <td align="center" width="33%">
+      <img src="examples/character-packs/chiikawa-study-companion/assets/thinking.png" alt="思考动作" width="180" />
+      <br />思考 <code>thinking</code>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <img src="examples/character-packs/chiikawa-study-companion/assets/annotating.png" alt="批注动作" width="180" />
+      <br />批注 <code>annotating</code>
+    </td>
+    <td align="center" width="33%">
+      <img src="examples/character-packs/chiikawa-study-companion/assets/sleeping.png" alt="睡眠动作" width="180" />
+      <br />睡眠 <code>sleeping</code>
+    </td>
+    <td align="center" width="33%">
+      <img src="examples/character-packs/chiikawa-study-companion/assets/away.png" alt="暂离动作" width="180" />
+      <br />暂离 <code>away</code>
+    </td>
+  </tr>
+</table>
 
 ## 数据与隐私
 
