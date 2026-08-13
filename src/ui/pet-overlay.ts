@@ -149,10 +149,12 @@ export class PetOverlay {
     if (!this.companion) {
       return;
     }
-    this.companion.style.setProperty(
-      "--paperpet-size",
-      `${settings.petSize}px`,
-    );
+    // Set concrete dimensions as well as CSS variables. Zotero's mixed XUL/
+    // HTML document can ignore custom properties on dynamically-created nodes.
+    this.companion.style.width = `${settings.petSize}px`;
+    this.companion.style.height = `${settings.petSize}px`;
+    this.companion.style.opacity = String(settings.petOpacity / 100);
+    this.companion.style.setProperty("--paperpet-size", `${settings.petSize}px`);
     this.companion.style.setProperty(
       "--paperpet-opacity",
       String(settings.petOpacity / 100),

@@ -17,7 +17,7 @@ describe("normalizePaperPetSettings", () => {
   it("clamps and rounds user-controlled numeric settings", () => {
     expect(
       normalizePaperPetSettings({
-        petSize: 500,
+        petSize: 1_000,
         petOpacity: 12,
         dragThreshold: 7.4,
         doubleClickDelay: 333,
@@ -27,7 +27,7 @@ describe("normalizePaperPetSettings", () => {
         semanticEventRetentionDays: 1,
       }),
     ).toMatchObject({
-      petSize: 220,
+      petSize: 600,
       petOpacity: 30,
       dragThreshold: 7,
       doubleClickDelay: 330,

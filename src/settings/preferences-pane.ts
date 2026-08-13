@@ -70,7 +70,9 @@ function init(): void {
         continue;
       }
       (settings as unknown as Record<string, number | boolean>)[key] =
-        input.type === "checkbox" ? input.checked : Number(input.value);
+        input.type === "checkbox"
+          ? input.checked
+          : Number.parseFloat(input.value);
     }
     return settings;
   };

@@ -38,7 +38,7 @@ describe("calculateExpectedReadingSeconds", () => {
     );
     expect(calculateExpectedReadingSeconds({ visibleWords: 5 }, 200)).toBe(15);
     expect(calculateExpectedReadingSeconds({ visibleWords: 2000 }, 200)).toBe(
-      120,
+      600,
     );
   });
 

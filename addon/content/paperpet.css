@@ -144,8 +144,8 @@
 .paperpet-placeholder__sheet {
   position: relative;
   display: grid;
-  width: clamp(36px, calc(var(--paperpet-size, 98px) * 0.63), 140px);
-  height: clamp(46px, calc(var(--paperpet-size, 98px) * 0.8), 176px);
+  width: 63%;
+  height: 80%;
   box-sizing: border-box;
   color: var(--paperpet-ink);
   background: var(--paperpet-paper);
@@ -154,7 +154,7 @@
   border-radius: 5px 12px 7px 7px;
   box-shadow: 0 9px 24px var(--paperpet-shadow);
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(18px, calc(var(--paperpet-size, 98px) * 0.31), 68px);
+  font-size: 31%;
   font-weight: 700;
   line-height: 1;
   place-items: center;

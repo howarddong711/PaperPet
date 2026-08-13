@@ -48,31 +48,37 @@ export function normalizePaperPetSettings(
 ): PaperPetSettings {
   const values = isRecord(candidate) ? candidate : {};
   return {
-    petSize: boundedNumber(values.petSize, 48, 220, 1, 98),
+    petSize: boundedNumber(values.petSize, 48, 600, 1, 98),
     petOpacity: boundedNumber(values.petOpacity, 30, 100, 1, 100),
     reduceMotion: booleanValue(values.reduceMotion, false),
-    dragThreshold: boundedNumber(values.dragThreshold, 2, 24, 1, 6),
-    doubleClickDelay: boundedNumber(values.doubleClickDelay, 180, 500, 10, 260),
+    dragThreshold: boundedNumber(values.dragThreshold, 2, 48, 1, 6),
+    doubleClickDelay: boundedNumber(
+      values.doubleClickDelay,
+      180,
+      1_000,
+      10,
+      260,
+    ),
     trackingEnabled: booleanValue(values.trackingEnabled, true),
     personalWordsPerMinute: boundedNumber(
       values.personalWordsPerMinute,
       80,
-      600,
+      1_200,
       5,
       200,
     ),
     defaultExpectedSeconds: boundedNumber(
       values.defaultExpectedSeconds,
       15,
-      120,
+      600,
       5,
       60,
     ),
-    sleepDelaySeconds: boundedNumber(values.sleepDelaySeconds, 5, 120, 5, 15),
+    sleepDelaySeconds: boundedNumber(values.sleepDelaySeconds, 5, 600, 5, 15),
     semanticEventRetentionDays: boundedNumber(
       values.semanticEventRetentionDays,
       7,
-      365,
+      730,
       1,
       90,
     ),
@@ -86,7 +92,12 @@ function boundedNumber(
   step: number,
   fallback: number,
 ): number {
-  const numeric = typeof value === "number" ? value : Number(value);
+  const numeric =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number.parseFloat(value)
+        : Number(value);
   if (!Number.isFinite(numeric)) {
     return fallback;
   }

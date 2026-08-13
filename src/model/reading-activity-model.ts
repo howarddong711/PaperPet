@@ -100,7 +100,7 @@ export function calculateExpectedReadingSeconds(
   }
 
   const factor = content.contentFactor ?? 1;
-  return clamp((60 * visibleWords * factor) / personalWordsPerMinute, 15, 120);
+  return clamp((60 * visibleWords * factor) / personalWordsPerMinute, 15, 600);
 }
 
 export class ReadingActivityModel {
@@ -190,7 +190,7 @@ export class ReadingActivityModel {
 
     const ageSeconds = Math.max(0, (now - this.lastStrongAt) / 1000);
     const expected = this.expectedReadingSeconds;
-    const hardStop = clamp(expected * 2, 45, 180);
+    const hardStop = clamp(expected * 2, 45, 900);
     const highConfidenceWindow = Math.min(8, expected * 0.25);
 
     let confidence: number;
