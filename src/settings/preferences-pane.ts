@@ -149,7 +149,8 @@ function init(): void {
           }
         })
         .catch((error: unknown) => {
-          setStatus("角色包安装失败");
+          const detail = error instanceof Error ? error.message : String(error);
+          setStatus(`角色包安装失败：${detail}`);
           Zotero.logError(
             error instanceof Error ? error : new Error(String(error)),
           );

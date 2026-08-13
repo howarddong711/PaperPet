@@ -339,8 +339,18 @@ async function loadImageDimensions(
   window: _ZoteroTypes.MainWindow,
   uri: string,
 ): Promise<{ width: number; height: number }> {
-  const image = new window.Image();
-  image.src = uri;
-  await image.decode();
+  const image = window.document.createElementNS(
+    "http://www.w3.org/1999/xhtml",
+    "img",
+  ) as HTMLImageElement;
+  await new Promise<void>((resolve, reject) => {
+    image.addEventListener("load", () => resolve(), { once: true });
+    image.addEventListener(
+      "error",
+      () => reject(new Error(`Unable to read character image: ${uri}`)),
+      { once: true },
+    );
+    image.src = uri;
+  });
   return { width: image.naturalWidth, height: image.naturalHeight };
 }

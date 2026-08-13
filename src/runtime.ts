@@ -228,14 +228,21 @@ export class PaperPetRuntime {
       return undefined;
     }
     const installer = new CharacterPackInstaller(this.database, window);
-    const pack = await installer.install(archivePath, {
-      enable: true,
-      replaceExisting: true,
-    });
-    this.applyCharacterPack(pack);
-    return Zotero.locale.startsWith("zh")
-      ? `角色包“${pack.manifest.name}”已安装并启用。`
-      : `Character pack “${pack.manifest.name}” was installed and enabled.`;
+    try {
+      const pack = await installer.install(archivePath, {
+        enable: true,
+        replaceExisting: true,
+      });
+      this.applyCharacterPack(pack);
+      return Zotero.locale.startsWith("zh")
+        ? `角色包“${pack.manifest.name}”已安装并启用。`
+        : `Character pack “${pack.manifest.name}” was installed and enabled.`;
+    } catch (error) {
+      Zotero.logError(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      throw error;
+    }
   }
 
   private chooseCharacterPack(
