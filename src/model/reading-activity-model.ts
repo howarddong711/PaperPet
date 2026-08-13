@@ -68,6 +68,8 @@ const STRONG_SIGNALS = new Set<ReadingSignal>([
   "content-click",
 ]);
 
+const ANNOTATING_ACTION_DURATION_MS = 3_000;
+
 const NAVIGATION_SIGNALS = new Set<ReadingSignal>([
   "scroll",
   "page-change",
@@ -109,7 +111,7 @@ export class ReadingActivityModel {
   private lastTickAt?: number;
   private lastStrongAt?: number;
   private lastWeakAt?: number;
-  private lastAnnotationAt?: number;
+  private lastAnnotatingAt?: number;
   private gateChangedAt?: number;
   private previousGate = false;
   private expectedReadingSeconds: number;
@@ -147,8 +149,8 @@ export class ReadingActivityModel {
       this.lastWeakAt = at;
     }
 
-    if (type === "annotation") {
-      this.lastAnnotationAt = at;
+    if (type === "annotation" || type === "selection") {
+      this.lastAnnotatingAt = at;
     }
   }
 
@@ -228,8 +230,8 @@ export class ReadingActivityModel {
     }
 
     if (
-      this.lastAnnotationAt !== undefined &&
-      now - this.lastAnnotationAt <= 8000
+      this.lastAnnotatingAt !== undefined &&
+      now - this.lastAnnotatingAt <= ANNOTATING_ACTION_DURATION_MS
     ) {
       return "annotating";
     }

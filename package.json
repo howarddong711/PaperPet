@@ -1,7 +1,7 @@
 {
   "name": "paperpet",
   "type": "module",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "description": "A quiet desktop reading companion for Zotero.",
   "license": "UNLICENSED",

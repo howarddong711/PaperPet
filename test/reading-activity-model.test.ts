@@ -111,6 +111,16 @@ describe("ReadingActivityModel", () => {
     expect(skimmer.tick(true, 3500).mode).toBe("skimming");
   });
 
+  it("shows the annotating action as soon as text is selected", () => {
+    const model = new ReadingActivityModel();
+    model.recordSignal("selection", 0, { visibleWords: 200 });
+    model.tick(true, 0);
+
+    expect(model.tick(true, 1_000).mode).toBe("annotating");
+    expect(model.tick(true, 3_000).mode).toBe("annotating");
+    expect(model.tick(true, 3_001).mode).not.toBe("annotating");
+  });
+
   it("moves from away to sleeping without adding time", () => {
     const model = new ReadingActivityModel({ sleepDelaySeconds: 15 });
     model.tick(false, 0);
