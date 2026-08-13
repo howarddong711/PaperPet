@@ -15,4 +15,5 @@ coverage/
 
 # Internal planning and retired prototypes are kept locally only.
 /docs/product-design.md
+/docs/development.md
 /src/settings/settings-view.ts
