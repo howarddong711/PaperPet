@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "org.paperpet.example.chiikawa-study",
+  "name": "Chiikawa Study Companion",
+  "version": "0.1.0",
+  "author": "PaperPet community sample",
+  "license": "Non-commercial sample; see README",
+  "renderer": "static-image",
+  "actions": {
+    "idle": { "asset": "assets/idle.png" },
+    "reading": { "asset": "assets/reading.png" },
+    "thinking": { "asset": "assets/thinking.png" },
+    "annotating": { "asset": "assets/annotating.png" },
+    "sleeping": { "asset": "assets/sleeping.png" },
+    "away": { "asset": "assets/away.png" }
+  }
+}

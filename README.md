@@ -8,7 +8,7 @@ PaperPet 是一款运行在 Zotero 桌面端的阅读伴侣。它住在 Zotero �
 
 ## 阅读中的陪伴
 
-![PaperPet 阅读陪伴](docs/screenshots/reading-companion-clean.jpg)
+![PaperPet 阅读陪伴](docs/screenshots/reading-companion.png)
 
 PaperPet 会观察窗口前台状态、滚动、翻页、选区和批注等信号，识别当前更接近哪一种阅读状态。宠物会在阅读、思考、快速浏览、批注、暂离和睡眠之间自然切换。
 
@@ -19,7 +19,7 @@ PaperPet 会观察窗口前台状态、滚动、翻页、选区和批注等信�
 
 ## 阅读报告
 
-![PaperPet 阅读报告](docs/screenshots/report-clean.jpg)
+![PaperPet 阅读报告](docs/screenshots/reading-report.png)
 
 阅读报告放在 Zotero 的 PaperPet 设置页中。它以最近七天为默认范围，展示有效阅读时间、前台阅读时间、阅读会话、读过的论文、每日阅读柱状图、识别比例和阅读动作分布。
 
@@ -29,7 +29,7 @@ PaperPet 不设置阅读目标、效率评分、排行榜或惩罚性连续签�
 
 ## 原生设置页
 
-![PaperPet 设置页](docs/screenshots/settings-clean.jpg)
+![PaperPet 设置页](docs/screenshots/settings.png)
 
 安装后，在 Zotero 的“设置”窗口左侧打开 PaperPet。宠物、阅读识别、数据保留、角色包和报告入口都集中在这里。
 
@@ -46,6 +46,10 @@ PaperPet 不设置阅读目标、效率评分、排行榜或惩罚性连续签�
 PaperPet 使用声明式的 `.zpet` 角色包。角色的图片、动作状态、尺寸和展示规则彼此分离，后续可以加入原创角色，也可以支持用户制作自己的角色包。
 
 角色包从 PaperPet 设置页安装。安装过程会检查包的结构、版本和资源范围，不执行角色包中的脚本。首版角色包格式见 [角色包格式说明](docs/character-pack.schema.json)。
+
+仓库提供了一个可以直接安装的完整示例包 [Chiikawa Study Companion](examples/character-packs/chiikawa-study-companion.zpet)。它包含待机、阅读、思考、批注、睡眠和暂离六种静态动作，安装说明与素材声明见 [示例角色包说明](examples/character-packs/README.md)。
+
+![Chiikawa Study Companion 阅读动作](examples/character-packs/chiikawa-study-companion/assets/reading.png)
 
 ## 数据与隐私
 
