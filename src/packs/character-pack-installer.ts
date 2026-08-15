@@ -190,12 +190,55 @@ export class CharacterPackInstaller {
 
   public async loadEnabled(): Promise<InstalledCharacterPack | undefined> {
     const record = await this.database.getEnabledPack();
-    if (!record) {
-      return undefined;
+    let recordError: unknown;
+    if (record && (await IOUtils.exists(record.installPath))) {
+      try {
+        const pack = await this.readInstalledPack(record.installPath);
+        if (pack) {
+          return pack;
+        }
+      } catch (error) {
+        recordError = error;
+        Zotero.logError(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
     }
-    const entries = await collectRelativeFiles(record.installPath);
+
+    // The files are the source of truth. Recover the database row when a
+    // profile migration, backup restore, or an interrupted first install left
+    // the index missing or stale.
+    const recovered = await this.discoverInstalledPack();
+    if (recovered) {
+      await this.database.saveInstalledPack({
+        packID: recovered.manifest.id,
+        version: recovered.manifest.version,
+        name: recovered.manifest.name,
+        author: recovered.manifest.author,
+        license: recovered.manifest.license,
+        installPath: recovered.installPath,
+        validationJSON: JSON.stringify({
+          schemaVersion: recovered.manifest.schemaVersion,
+          recoveredAt: Date.now(),
+        }),
+        enabled: true,
+        installedAt: Date.now(),
+      });
+      return recovered;
+    }
+
+    if (recordError) {
+      throw recordError;
+    }
+    return undefined;
+  }
+
+  private async readInstalledPack(
+    installPath: string,
+  ): Promise<InstalledCharacterPack | undefined> {
+    const entries = await collectRelativeFiles(installPath);
     const candidate = (await IOUtils.readJSON(
-      PathUtils.join(record.installPath, "manifest.json"),
+      PathUtils.join(installPath, "manifest.json"),
     )) as unknown;
     const validation = validateCharacterPack(candidate, entries);
     if (!validation.valid || !validation.manifest) {
@@ -203,7 +246,55 @@ export class CharacterPackInstaller {
         `Installed character pack is no longer valid:\n${validation.errors.join("\n")}`,
       );
     }
-    return { manifest: validation.manifest, installPath: record.installPath };
+    return { manifest: validation.manifest, installPath };
+  }
+
+  private async discoverInstalledPack(): Promise<
+    InstalledCharacterPack | undefined
+  > {
+    const packsRoot = PathUtils.join(
+      this.database.location.directoryPath,
+      "packs",
+    );
+    if (!(await IOUtils.exists(packsRoot))) {
+      return undefined;
+    }
+
+    const candidates: InstalledCharacterPack[] = [];
+    const visit = async (directory: string, depth: number): Promise<void> => {
+      if (depth > 3) {
+        return;
+      }
+      for (const child of await IOUtils.getChildren(directory)) {
+        const stat = await IOUtils.stat(child);
+        if (stat.type === "directory") {
+          await visit(child, depth + 1);
+          continue;
+        }
+        if (PathUtils.filename(child).toLowerCase() !== "manifest.json") {
+          continue;
+        }
+        const installPath = PathUtils.parent(child);
+        if (!installPath) {
+          continue;
+        }
+        try {
+          const pack = await this.readInstalledPack(installPath);
+          if (pack) {
+            candidates.push(pack);
+          }
+        } catch (error) {
+          Zotero.logError(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+        }
+      }
+    };
+    await visit(packsRoot, 0);
+    candidates.sort((left, right) =>
+      left.installPath.localeCompare(right.installPath),
+    );
+    return candidates.at(-1);
   }
 
   private inventoryArchive(
