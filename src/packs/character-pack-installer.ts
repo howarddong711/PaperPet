@@ -97,6 +97,8 @@ export class CharacterPackInstaller {
         );
       }
 
+      await this.cacheArchive(archivePath, validation.manifest);
+
       const destination = PathUtils.join(
         this.database.location.directoryPath,
         "packs",
@@ -227,6 +229,11 @@ export class CharacterPackInstaller {
       return recovered;
     }
 
+    const recoveredFromArchive = await this.recoverFromArchiveCache();
+    if (recoveredFromArchive) {
+      return recoveredFromArchive;
+    }
+
     if (recordError) {
       throw recordError;
     }
@@ -295,6 +302,78 @@ export class CharacterPackInstaller {
       left.installPath.localeCompare(right.installPath),
     );
     return candidates.at(-1);
+  }
+
+  private async cacheArchive(
+    archivePath: string,
+    manifest: CharacterPackManifest,
+  ): Promise<void> {
+    const cacheDirectory = PathUtils.join(
+      this.database.location.directoryPath,
+      "packs",
+      ".archives",
+    );
+    const cachePath = PathUtils.join(
+      cacheDirectory,
+      `${manifest.id}--${manifest.version}.zpet`,
+    );
+    if (archivePath === cachePath) {
+      return;
+    }
+    try {
+      await IOUtils.makeDirectory(cacheDirectory, {
+        createAncestors: true,
+        ignoreExisting: true,
+      });
+      const io = IOUtils as unknown as {
+        copy: (
+          source: string,
+          destination: string,
+          options?: { noOverwrite?: boolean },
+        ) => Promise<void>;
+      };
+      await io.copy(archivePath, cachePath, { noOverwrite: false });
+    } catch (error) {
+      // The extracted pack is still persistent; cache failures should not make
+      // an otherwise successful installation fail.
+      Zotero.logError(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+  }
+
+  private async recoverFromArchiveCache(): Promise<
+    InstalledCharacterPack | undefined
+  > {
+    const cacheDirectory = PathUtils.join(
+      this.database.location.directoryPath,
+      "packs",
+      ".archives",
+    );
+    if (!(await IOUtils.exists(cacheDirectory))) {
+      return undefined;
+    }
+    const archives: string[] = [];
+    for (const child of await IOUtils.getChildren(cacheDirectory)) {
+      const stat = await IOUtils.stat(child);
+      if (stat.type === "regular" && child.toLowerCase().endsWith(".zpet")) {
+        archives.push(child);
+      }
+    }
+    archives.sort();
+    for (const archivePath of archives.reverse()) {
+      try {
+        return await this.install(archivePath, {
+          enable: true,
+          replaceExisting: true,
+        });
+      } catch (error) {
+        Zotero.logError(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    }
+    return undefined;
   }
 
   private inventoryArchive(
@@ -425,17 +504,25 @@ async function collectRelativeFiles(
   currentPath = rootPath,
 ): Promise<string[]> {
   const entries: string[] = [];
+  const normalizedRoot = rootPath.replace(/\\/g, "/").replace(/\/$/, "");
   for (const child of await IOUtils.getChildren(currentPath)) {
     const stat = await IOUtils.stat(child);
     if (stat.type === "directory") {
       entries.push(...(await collectRelativeFiles(rootPath, child)));
     } else {
-      entries.push(
-        child
-          .slice(rootPath.length + 1)
-          .split("\\")
-          .join("/"),
-      );
+      const normalizedChild = child.replace(/\\/g, "/");
+      const prefix = `${normalizedRoot}/`;
+      const relative = normalizedChild
+        .slice(
+          normalizedChild.toLowerCase().startsWith(prefix.toLowerCase())
+            ? prefix.length
+            : normalizedChild.length,
+        )
+        .replace(/^\/+/, "");
+      if (!relative) {
+        throw new Error(`Unable to determine relative pack path: ${child}`);
+      }
+      entries.push(relative);
     }
   }
   return entries;
