@@ -10,6 +10,7 @@ import { PaperPetDatabase } from "../storage/paperpet-database";
 const IMAGE_PATTERN = /\.(?:apng|png|webp)$/i;
 const MANIFEST_MAX_BYTES = 1024 * 1024;
 const ACTIVE_PACK_PATH_PREF = "paperpet.activePackPath";
+const ACTIVE_PACK_ARCHIVE_PREF = "paperpet.activePackArchivePath";
 
 export interface InstalledCharacterPack {
   manifest: CharacterPackManifest;
@@ -157,6 +158,7 @@ export class CharacterPackInstaller {
           installedAt: Date.now(),
         });
         this.rememberActivePack(destination);
+        this.rememberActiveArchive(archivePath);
       } catch (error) {
         await IOUtils.remove(destination, {
           recursive: true,
@@ -301,6 +303,28 @@ export class CharacterPackInstaller {
   private rememberActivePack(installPath: string): void {
     try {
       Zotero.Prefs.set(ACTIVE_PACK_PATH_PREF, installPath);
+    } catch (error) {
+      Zotero.logError(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+  }
+
+  public getRememberedArchivePath(): string | undefined {
+    try {
+      const value = Zotero.Prefs.get(ACTIVE_PACK_ARCHIVE_PREF);
+      return typeof value === "string" && value.length > 0 ? value : undefined;
+    } catch (error) {
+      Zotero.logError(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      return undefined;
+    }
+  }
+
+  private rememberActiveArchive(archivePath: string): void {
+    try {
+      Zotero.Prefs.set(ACTIVE_PACK_ARCHIVE_PREF, archivePath);
     } catch (error) {
       Zotero.logError(
         error instanceof Error ? error : new Error(String(error)),

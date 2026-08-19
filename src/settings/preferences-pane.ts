@@ -28,10 +28,13 @@ function renderCharacterPackStatus(api: PaperPetPreferenceAPI): void {
   const pathValue = document.getElementById(
     "paperpet-character-pack-path-value",
   );
+  const archivePathValue = document.getElementById(
+    "paperpet-character-pack-archive-path-value",
+  );
   const errorValue = document.getElementById(
     "paperpet-character-pack-error-value",
   );
-  if (!statusValue || !pathValue || !errorValue) {
+  if (!statusValue || !pathValue || !archivePathValue || !errorValue) {
     return;
   }
   const packStatus = api.getCharacterPackStatus();
@@ -43,6 +46,7 @@ function renderCharacterPackStatus(api: PaperPetPreferenceAPI): void {
   };
   statusValue.textContent = labels[packStatus.state];
   pathValue.textContent = packStatus.installPath || "未记录安装路径";
+  archivePathValue.textContent = packStatus.archivePath || "未记录源文件路径";
   errorValue.textContent = packStatus.error || "无";
 }
 

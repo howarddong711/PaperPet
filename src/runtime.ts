@@ -20,6 +20,7 @@ export interface CharacterPackStatus {
   name?: string;
   version?: string;
   installPath?: string;
+  archivePath?: string;
   error?: string;
 }
 
@@ -141,12 +142,14 @@ export class PaperPetRuntime {
     overlay.updateSettings(this.settings);
     try {
       const pack = await installer.loadEnabled();
+      const archivePath = installer.getRememberedArchivePath();
       this.characterPackStatus = pack
         ? {
             state: "loaded",
             name: pack.manifest.name,
             version: pack.manifest.version,
             installPath: pack.installPath,
+            archivePath,
           }
         : {
             state: "default",
@@ -154,6 +157,7 @@ export class PaperPetRuntime {
               this.database.location.directoryPath,
               "packs",
             ),
+            archivePath,
           };
       this.log(
         pack
@@ -168,6 +172,7 @@ export class PaperPetRuntime {
           this.database.location.directoryPath,
           "packs",
         ),
+        archivePath: installer.getRememberedArchivePath(),
         error: error instanceof Error ? error.message : String(error),
       };
       Zotero.logError(
@@ -278,6 +283,7 @@ export class PaperPetRuntime {
         name: pack.manifest.name,
         version: pack.manifest.version,
         installPath: pack.installPath,
+        archivePath,
       };
       return Zotero.locale.startsWith("zh")
         ? `角色包“${pack.manifest.name}”已安装并启用。`
@@ -289,6 +295,7 @@ export class PaperPetRuntime {
           this.database.location.directoryPath,
           "packs",
         ),
+        archivePath: installer.getRememberedArchivePath(),
         error: error instanceof Error ? error.message : String(error),
       };
       Zotero.logError(

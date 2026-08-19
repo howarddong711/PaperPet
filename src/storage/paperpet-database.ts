@@ -254,12 +254,13 @@ export class PaperPetDatabase {
   public async getEnabledPack(): Promise<
     InstalledCharacterPackRecord | undefined
   > {
-    const row = await this.db.rowQueryAsync(
+    const rows = await this.db.queryAsync(
       `SELECT
         pack_id, version, name, author, license, install_path,
         validation_json, enabled, installed_at
-      FROM installed_packs WHERE enabled = 1 LIMIT 1`,
+        FROM installed_packs WHERE enabled = 1 LIMIT 1`,
     );
+    const row = rows?.[0];
     if (!row) {
       return undefined;
     }
