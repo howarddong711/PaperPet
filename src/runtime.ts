@@ -130,7 +130,13 @@ export class PaperPetRuntime {
     overlay.mount();
     overlay.updateSettings(this.settings);
     try {
-      overlay.setCharacterPack(await installer.loadEnabled());
+      const pack = await installer.loadEnabled();
+      this.log(
+        pack
+          ? `Loaded character pack ${pack.manifest.id} from ${pack.installPath}`
+          : "No installed character pack found; using the default character",
+      );
+      overlay.setCharacterPack(pack);
     } catch (error) {
       Zotero.logError(
         error instanceof Error ? error : new Error(String(error)),

@@ -133,7 +133,13 @@ export class CharacterPackInstaller {
           await IOUtils.move(destination, backupPath, { noOverwrite: true });
         }
 
-        await IOUtils.move(contentRoot, destination, { noOverwrite: true });
+        // Copy instead of moving from the OS temp directory. On Windows the
+        // temp directory and Zotero data directory may be on different
+        // volumes, where a move can report success but leave no durable tree.
+        await IOUtils.copy(contentRoot, destination, {
+          noOverwrite: true,
+          recursive: true,
+        });
         await this.database.saveInstalledPack({
           packID: validation.manifest.id,
           version: validation.manifest.version,
