@@ -9,6 +9,7 @@ import { PaperPetDatabase } from "../storage/paperpet-database";
 
 const IMAGE_PATTERN = /\.(?:apng|png|webp)$/i;
 const MANIFEST_MAX_BYTES = 1024 * 1024;
+const ACTIVE_PACK_PATH_PREF = "paperpet.activePackPath";
 
 export interface InstalledCharacterPack {
   manifest: CharacterPackManifest;
@@ -149,6 +150,7 @@ export class CharacterPackInstaller {
           enabled: options.enable ?? true,
           installedAt: Date.now(),
         });
+        this.rememberActivePack(destination);
       } catch (error) {
         await IOUtils.remove(destination, {
           recursive: true,
@@ -207,6 +209,39 @@ export class CharacterPackInstaller {
       }
     }
 
+    const rememberedPath = this.getRememberedPackPath();
+    if (
+      rememberedPath &&
+      (!record || rememberedPath !== record.installPath) &&
+      (await IOUtils.exists(rememberedPath))
+    ) {
+      try {
+        const pack = await this.readInstalledPack(rememberedPath);
+        if (pack) {
+          await this.database.saveInstalledPack({
+            packID: pack.manifest.id,
+            version: pack.manifest.version,
+            name: pack.manifest.name,
+            author: pack.manifest.author,
+            license: pack.manifest.license,
+            installPath: pack.installPath,
+            validationJSON: JSON.stringify({
+              schemaVersion: pack.manifest.schemaVersion,
+              recoveredAt: Date.now(),
+            }),
+            enabled: true,
+            installedAt: Date.now(),
+          });
+          return pack;
+        }
+      } catch (error) {
+        recordError = error;
+        Zotero.logError(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    }
+
     // The files are the source of truth. Recover the database row when a
     // profile migration, backup restore, or an interrupted first install left
     // the index missing or stale.
@@ -226,6 +261,7 @@ export class CharacterPackInstaller {
         enabled: true,
         installedAt: Date.now(),
       });
+      this.rememberActivePack(recovered.installPath);
       return recovered;
     }
 
@@ -254,6 +290,28 @@ export class CharacterPackInstaller {
       );
     }
     return { manifest: validation.manifest, installPath };
+  }
+
+  private rememberActivePack(installPath: string): void {
+    try {
+      Zotero.Prefs.set(ACTIVE_PACK_PATH_PREF, installPath);
+    } catch (error) {
+      Zotero.logError(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+  }
+
+  private getRememberedPackPath(): string | undefined {
+    try {
+      const value = Zotero.Prefs.get(ACTIVE_PACK_PATH_PREF);
+      return typeof value === "string" && value.length > 0 ? value : undefined;
+    } catch (error) {
+      Zotero.logError(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      return undefined;
+    }
   }
 
   private async discoverInstalledPack(): Promise<
