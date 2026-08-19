@@ -15,6 +15,14 @@ import {
   type PaperPetSettings,
 } from "./settings/paperpet-settings";
 
+export interface CharacterPackStatus {
+  state: "loading" | "loaded" | "default" | "error";
+  name?: string;
+  version?: string;
+  installPath?: string;
+  error?: string;
+}
+
 interface WindowCompanion {
   overlay: PetOverlay;
   controller: ReaderActivityController;
@@ -27,6 +35,7 @@ export interface PublishedPreferenceAPI {
   saveSettings: (settings: PaperPetSettings) => Promise<PaperPetSettings>;
   openDashboard: () => Promise<void>;
   installCharacterPack: () => Promise<string | undefined>;
+  getCharacterPackStatus: () => CharacterPackStatus;
 }
 
 export class PaperPetRuntime {
@@ -38,6 +47,7 @@ export class PaperPetRuntime {
   private readonly growth = new GrowthService(this.database);
   private readonly settingsStore = new PaperPetSettingsStore(this.database);
   private settings: PaperPetSettings = { ...DEFAULT_PAPERPET_SETTINGS };
+  private characterPackStatus: CharacterPackStatus = { state: "loading" };
 
   private readonly companions = new Map<
     _ZoteroTypes.MainWindow,
@@ -131,6 +141,20 @@ export class PaperPetRuntime {
     overlay.updateSettings(this.settings);
     try {
       const pack = await installer.loadEnabled();
+      this.characterPackStatus = pack
+        ? {
+            state: "loaded",
+            name: pack.manifest.name,
+            version: pack.manifest.version,
+            installPath: pack.installPath,
+          }
+        : {
+            state: "default",
+            installPath: PathUtils.join(
+              this.database.location.directoryPath,
+              "packs",
+            ),
+          };
       this.log(
         pack
           ? `Loaded character pack ${pack.manifest.id} from ${pack.installPath}`
@@ -138,6 +162,14 @@ export class PaperPetRuntime {
       );
       overlay.setCharacterPack(pack);
     } catch (error) {
+      this.characterPackStatus = {
+        state: "error",
+        installPath: PathUtils.join(
+          this.database.location.directoryPath,
+          "packs",
+        ),
+        error: error instanceof Error ? error.message : String(error),
+      };
       Zotero.logError(
         error instanceof Error ? error : new Error(String(error)),
       );
@@ -204,6 +236,7 @@ export class PaperPetRuntime {
       },
       openDashboard: () => this.openDashboard(),
       installCharacterPack: () => this.installCharacterPack(),
+      getCharacterPackStatus: () => ({ ...this.characterPackStatus }),
     };
     (Zotero as unknown as { PaperPet?: PublishedPreferenceAPI }).PaperPet =
       preferenceAPI;
@@ -240,10 +273,24 @@ export class PaperPetRuntime {
         replaceExisting: true,
       });
       this.applyCharacterPack(pack);
+      this.characterPackStatus = {
+        state: "loaded",
+        name: pack.manifest.name,
+        version: pack.manifest.version,
+        installPath: pack.installPath,
+      };
       return Zotero.locale.startsWith("zh")
         ? `角色包“${pack.manifest.name}”已安装并启用。`
         : `Character pack “${pack.manifest.name}” was installed and enabled.`;
     } catch (error) {
+      this.characterPackStatus = {
+        state: "error",
+        installPath: PathUtils.join(
+          this.database.location.directoryPath,
+          "packs",
+        ),
+        error: error instanceof Error ? error.message : String(error),
+      };
       Zotero.logError(
         error instanceof Error ? error : new Error(String(error)),
       );

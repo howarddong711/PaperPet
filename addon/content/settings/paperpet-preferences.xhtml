@@ -179,6 +179,26 @@
       </html:div>
     </html:section>
 
+    <html:section class="paperpet-preferences__pack-status">
+      <html:h2>角色包状态</html:h2>
+      <html:div class="paperpet-pack-status__row">
+        <html:span>当前状态</html:span>
+        <html:strong id="paperpet-character-pack-status-value"
+          >正在检查角色包…</html:strong
+        >
+      </html:div>
+      <html:div class="paperpet-pack-status__row">
+        <html:span>角色包路径</html:span>
+        <html:code id="paperpet-character-pack-path-value"
+          >未记录安装路径</html:code
+        >
+      </html:div>
+      <html:div class="paperpet-pack-status__error">
+        <html:span>错误信息</html:span>
+        <html:code id="paperpet-character-pack-error-value">无</html:code>
+      </html:div>
+    </html:section>
+
     <html:footer class="paperpet-preferences__footer">
       <html:span id="paperpet-preferences-status"></html:span>
       <html:button id="paperpet-preferences-reset" type="button"

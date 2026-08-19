@@ -2,6 +2,7 @@ import {
   DEFAULT_PAPERPET_SETTINGS,
   type PaperPetSettings,
 } from "./paperpet-settings";
+import type { CharacterPackStatus } from "../runtime";
 
 declare const document: Document;
 
@@ -11,12 +12,38 @@ interface PaperPetPreferenceAPI {
   saveSettings: (settings: PaperPetSettings) => Promise<PaperPetSettings>;
   openDashboard: () => Promise<void>;
   installCharacterPack: () => Promise<string | undefined>;
+  getCharacterPackStatus: () => CharacterPackStatus;
 }
 
 const API_UNAVAILABLE = "PaperPet 设置服务暂不可用，请重启 Zotero 后重试。";
 
 function preferenceAPI(): PaperPetPreferenceAPI | undefined {
   return (Zotero as unknown as { PaperPet?: PaperPetPreferenceAPI }).PaperPet;
+}
+
+function renderCharacterPackStatus(api: PaperPetPreferenceAPI): void {
+  const statusValue = document.getElementById(
+    "paperpet-character-pack-status-value",
+  );
+  const pathValue = document.getElementById(
+    "paperpet-character-pack-path-value",
+  );
+  const errorValue = document.getElementById(
+    "paperpet-character-pack-error-value",
+  );
+  if (!statusValue || !pathValue || !errorValue) {
+    return;
+  }
+  const packStatus = api.getCharacterPackStatus();
+  const labels: Record<CharacterPackStatus["state"], string> = {
+    loading: "正在检查角色包…",
+    loaded: `已加载${packStatus.name ? `：${packStatus.name}` : ""}${packStatus.version ? `（${packStatus.version}）` : ""}`,
+    default: "未加载角色包，当前使用默认角色",
+    error: "角色包加载失败，当前使用默认角色",
+  };
+  statusValue.textContent = labels[packStatus.state];
+  pathValue.textContent = packStatus.installPath || "未记录安装路径";
+  errorValue.textContent = packStatus.error || "无";
 }
 
 function init(): void {
@@ -146,6 +173,7 @@ function init(): void {
         .then((message) => {
           if (message) {
             setStatus(message);
+            renderCharacterPackStatus(api);
           } else {
             setStatus("已取消安装");
           }
@@ -153,6 +181,7 @@ function init(): void {
         .catch((error: unknown) => {
           const detail = error instanceof Error ? error.message : String(error);
           setStatus(`角色包安装失败：${detail}`);
+          renderCharacterPackStatus(api);
           Zotero.logError(
             error instanceof Error ? error : new Error(String(error)),
           );
@@ -160,6 +189,7 @@ function init(): void {
     });
 
   render(api.getSettings());
+  renderCharacterPackStatus(api);
 }
 
 function updateOutput(input: HTMLInputElement): void {
@@ -185,6 +215,12 @@ document.addEventListener(
   (event: Event) => {
     const target = event.target as HTMLElement | null;
     if (target?.id === "paperpet-preferences") {
+      if (target.dataset.initialized === "true") {
+        const api = preferenceAPI();
+        if (api) {
+          renderCharacterPackStatus(api);
+        }
+      }
       init();
     }
   },
