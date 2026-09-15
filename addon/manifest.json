@@ -12,8 +12,8 @@
     "zotero": {
       "id": "paperpet@howarddong711.github.io",
       "update_url": "https://raw.githubusercontent.com/howarddong711/PaperPet/main/update.json",
-      "strict_min_version": "9.0",
-      "strict_max_version": "9.*"
+      "strict_min_version": "10.0",
+      "strict_max_version": "10.*"
     }
   }
 }

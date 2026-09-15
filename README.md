@@ -92,7 +92,7 @@ PaperPet 的阅读会话、动作事件、设置和报告数据默认只保存�
 
 ## 安装与开始使用
 
-PaperPet 支持 Zotero 9 桌面端，适用于 macOS、Windows 和 Linux。
+PaperPet 0.4.0 起支持 Zotero 10 桌面端，适用于 macOS、Windows 和 Linux。Zotero 9 用户请继续使用 PaperPet 0.3.11。
 
 1. 从 [GitHub Releases](https://github.com/howarddong711/PaperPet/releases) 下载最新的 `PaperPet.xpi`。
 2. 打开 Zotero，进入“工具 → 插件”。
@@ -120,7 +120,7 @@ PaperPet 会根据最近一段时间的阅读动作判断你是否仍在阅读�
 
 ## 当前版本
 
-PaperPet 0.3.0 已提供阅读陪伴、状态识别、阅读记录、可视化报告、可拖动宠物、原生设置页和声明式角色包框架。
+PaperPet 0.4.0 支持 Zotero 10，已由用户确认在 Zotero 10 上正常使用。现有功能包括阅读陪伴、状态识别、阅读记录、可视化报告、可拖动宠物、原生设置页和声明式角色包框架。
 
 日报、周报、月报和年报不属于当前版本。节日限定的年度回顾会在后续版本中基于本地统计数据生成，并在获得用户明确授权后使用 LLM 完成叙事。
 
