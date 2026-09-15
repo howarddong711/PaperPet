@@ -59,7 +59,9 @@ export class DashboardRepository {
     days = 7,
     now = Date.now(),
   ): Promise<ReadingOverviewData> {
-    const cutoff = startOfLocalDay(now - (days - 1) * 86_400_000);
+    const start = new Date(now);
+    start.setDate(start.getDate() - (days - 1));
+    const cutoff = startOfLocalDay(start.getTime());
     const [
       dailyRows,
       behaviorRows,
@@ -70,15 +72,15 @@ export class DashboardRepository {
       paperCount,
     ] = await Promise.all([
       this.database.db.queryAsync(
-        `SELECT local_date,
+        `SELECT strftime('%Y-%m-%d', started_at / 1000, 'unixepoch', 'localtime') AS local_date,
           SUM(foreground_seconds) AS foreground_seconds,
           SUM(effective_seconds) AS effective_seconds,
-          SUM(session_count) AS session_count
-        FROM daily_item_stats
-        WHERE local_date >= ?
+          COUNT(*) AS session_count
+        FROM reading_sessions
+        WHERE started_at >= ? AND deleted = 0 AND excluded = 0
         GROUP BY local_date
         ORDER BY local_date`,
-        [localDateFor(cutoff)],
+        [cutoff],
       ),
       this.database.db.queryAsync(
         `SELECT semantic_events.event_type, SUM(semantic_events.event_count) AS event_count
@@ -93,11 +95,15 @@ export class DashboardRepository {
       ),
       this.database.db.queryAsync(
         `SELECT library_id, item_key, attachment_key, title_snapshot,
-          foreground_seconds, effective_seconds, session_count,
-          annotation_count, last_read_at
-        FROM item_totals
+          SUM(foreground_seconds) AS foreground_seconds,
+          SUM(effective_seconds) AS effective_seconds, COUNT(*) AS session_count,
+          SUM(annotation_count) AS annotation_count, MAX(started_at) AS last_read_at
+        FROM reading_sessions
+        WHERE started_at >= ? AND deleted = 0 AND excluded = 0
+        GROUP BY library_id, item_key, attachment_key
         ORDER BY last_read_at DESC
         LIMIT 12`,
+        [cutoff],
       ),
       this.database.db.valueQueryAsync<number>(
         `SELECT COALESCE(SUM(foreground_seconds), 0) FROM reading_sessions
@@ -128,7 +134,9 @@ export class DashboardRepository {
       }),
     );
     const daily = Array.from({ length: days }, (_, index) => {
-      const date = localDateFor(cutoff + index * 86_400_000);
+      const day = new Date(cutoff);
+      day.setDate(day.getDate() + index);
+      const date = localDateFor(day.getTime());
       return (
         dailyByDate.get(date) ?? {
           date,
@@ -158,7 +166,7 @@ export class DashboardRepository {
   public async getItemDetail(
     item: RecentReadingItem,
   ): Promise<ItemReadingDetail> {
-    const [dailyRows, sessionRows] = await Promise.all([
+    const [dailyRows, totalRows, sessionRows] = await Promise.all([
       this.database.db.queryAsync(
         `SELECT local_date,
           SUM(foreground_seconds) AS foreground_seconds,
@@ -167,6 +175,18 @@ export class DashboardRepository {
         FROM daily_item_stats
         WHERE library_id = ? AND item_key = ? AND attachment_key = ?
         GROUP BY local_date ORDER BY local_date DESC LIMIT 30`,
+        [item.libraryID, item.itemKey, item.attachmentKey],
+      ),
+      this.database.db.queryAsync(
+        `SELECT library_id, item_key, attachment_key, title_snapshot,
+          SUM(CASE WHEN excluded = 0 THEN foreground_seconds ELSE 0 END) AS foreground_seconds,
+          SUM(CASE WHEN excluded = 0 THEN effective_seconds ELSE 0 END) AS effective_seconds,
+          SUM(CASE WHEN excluded = 0 THEN 1 ELSE 0 END) AS session_count,
+          SUM(CASE WHEN excluded = 0 THEN annotation_count ELSE 0 END) AS annotation_count,
+          MAX(started_at) AS last_read_at
+        FROM reading_sessions
+        WHERE library_id = ? AND item_key = ? AND attachment_key = ? AND deleted = 0
+        GROUP BY library_id, item_key, attachment_key`,
         [item.libraryID, item.itemKey, item.attachmentKey],
       ),
       this.database.db.queryAsync(
@@ -192,7 +212,15 @@ export class DashboardRepository {
       ),
     ]);
     return {
-      item,
+      item: totalRows?.length
+        ? mapRecentItem(totalRows[0])
+        : {
+            ...item,
+            foregroundSeconds: 0,
+            effectiveSeconds: 0,
+            sessionCount: 0,
+            annotationCount: 0,
+          },
       daily: (dailyRows ?? [])
         .map((row) => mapDaily(row as Record<string, unknown>))
         .toReversed(),

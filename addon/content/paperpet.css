@@ -297,14 +297,15 @@
   min-height: 100%;
   height: auto;
   box-sizing: border-box;
-  padding: clamp(24px, 4vw, 58px);
+  padding: 32px max(24px, calc((100% - 1320px) / 2));
   overflow: auto;
   color: var(--paperpet-dashboard-ink);
-  background:
-    linear-gradient(90deg, rgb(154 104 70 / 7%) 1px, transparent 1px) 0 0 / 28px
-      28px,
-    var(--paperpet-dashboard-paper);
-  font: menu;
+  background: var(--paperpet-dashboard-paper);
+  font:
+    15px/1.6 "Segoe UI",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
 }
 
 .paperpet-dashboard__header {
@@ -320,7 +321,7 @@
   max-width: 850px;
   margin: 5px 0 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(28px, 4vw, 50px);
+  font-size: clamp(28px, 3vw, 38px);
   font-weight: 600;
   line-height: 1.08;
 }
@@ -348,14 +349,61 @@
   gap: 8px;
 }
 
+.paperpet-data-menu {
+  position: relative;
+  font-size: 14px;
+}
+.paperpet-data-menu > summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  border: 1px solid var(--paperpet-dashboard-line);
+  border-radius: 8px;
+}
+.paperpet-data-menu__body {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 5;
+  display: grid;
+  gap: 12px;
+  width: min(280px, 65vw);
+  padding: 18px;
+  background: var(--paperpet-dashboard-paper);
+  border: 1px solid var(--paperpet-dashboard-line);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 18%);
+}
+.paperpet-data-menu__danger {
+  color: var(--paperpet-red);
+  border-top: 2px solid var(--paperpet-dashboard-line);
+}
+.paperpet-chart-scroll {
+  overflow-x: auto;
+}
+.paperpet-session-list > [data-excluded="true"] {
+  color: var(--paperpet-dashboard-muted);
+  background: color-mix(in srgb, var(--paperpet-dashboard-ink) 4%, transparent);
+}
+.paperpet-dashboard :focus-visible {
+  outline: 2px solid var(--paperpet-moss);
+  outline-offset: 3px;
+}
+.paperpet-dashboard select {
+  color-scheme: light dark;
+}
+.paperpet-paper-list__item strong {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .paperpet-dashboard__tool {
-  padding: 5px 9px;
+  padding: 8px 12px;
   color: inherit;
   background: transparent;
   border: 1px solid var(--paperpet-dashboard-line);
   border-radius: 999px;
   font: inherit;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .paperpet-dashboard__tool:hover,
@@ -406,7 +454,7 @@
 
 .paperpet-dashboard__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.34fr);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.45fr);
   gap: clamp(24px, 4vw, 54px);
 }
 
@@ -435,7 +483,7 @@
 .paperpet-chart {
   display: grid;
   grid-template-columns: repeat(7, minmax(24px, 1fr));
-  height: 220px;
+  height: 180px;
   padding: 14px 8px 0;
   gap: 10px;
   border-bottom: 1px solid var(--paperpet-dashboard-line);
@@ -460,7 +508,7 @@
   position: absolute;
   bottom: 0;
   width: min(34px, 72%);
-  min-height: 2px;
+  min-height: 0;
   border-radius: 3px 3px 0 0;
 }
 
@@ -478,7 +526,7 @@
   overflow: hidden;
   color: var(--paperpet-dashboard-muted);
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-  font-size: 10px;
+  font-size: 12px;
   text-align: center;
   text-overflow: clip;
   white-space: nowrap;
@@ -519,7 +567,7 @@
 
 .paperpet-paper-list__item span {
   color: var(--paperpet-dashboard-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .paperpet-current__title,
@@ -579,7 +627,7 @@
 .paperpet-dashboard__empty {
   margin: 0;
   color: var(--paperpet-dashboard-muted);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -603,7 +651,7 @@
   align-items: center;
   grid-template-columns: 72px minmax(40px, 1fr) 30px;
   gap: 8px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .paperpet-behaviors__track {
@@ -683,14 +731,18 @@
 
 @media (prefers-color-scheme: dark) {
   .paperpet-dashboard {
-    --paperpet-dashboard-paper: #282722;
+    --paperpet-dashboard-paper: #262927;
     --paperpet-dashboard-ink: #f0ece3;
-    --paperpet-dashboard-muted: #b8b1a5;
+    --paperpet-dashboard-muted: #c0c7c1;
     --paperpet-dashboard-line: rgb(240 236 227 / 15%);
   }
 }
 
 @media (max-width: 820px) {
+  .paperpet-dashboard__header {
+    align-items: start;
+    flex-direction: column;
+  }
   .paperpet-dashboard__grid {
     grid-template-columns: 1fr;
   }
@@ -702,6 +754,11 @@
 }
 
 @media (max-width: 600px) {
+  .paperpet-dashboard__aside,
+  .paperpet-paper-list__item,
+  .paperpet-session-list > div {
+    grid-template-columns: 1fr;
+  }
   .paperpet-dashboard__metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

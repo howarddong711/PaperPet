@@ -48,5 +48,16 @@ describe("release compatibility metadata", () => {
       strict_min_version: manifest.applications.zotero.strict_min_version,
       strict_max_version: manifest.applications.zotero.strict_max_version,
     });
+    expect(updateFeed.addons[pkg.config.addonID]?.updates).toContainEqual(
+      expect.objectContaining({
+        version: "0.3.11",
+        applications: {
+          zotero: {
+            strict_min_version: "9.0",
+            strict_max_version: "9.*",
+          },
+        },
+      }),
+    );
   });
 });

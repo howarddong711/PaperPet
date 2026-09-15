@@ -3,8 +3,10 @@
 }
 
 .paperpet-preferences {
+  --paperpet-settings-muted: #565f58;
+  --paperpet-red: #b32232;
   box-sizing: border-box;
-  max-width: 880px;
+  max-width: 960px;
   padding: 32px 40px 36px;
   color: #242521;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -13,6 +15,8 @@
 @media (prefers-color-scheme: dark) {
   .paperpet-preferences {
     color: #f0ece3;
+    --paperpet-settings-muted: #bcc9c0;
+    --paperpet-red: #ff909a;
   }
 }
 
@@ -61,7 +65,7 @@
 
 .paperpet-preference {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 76px auto;
   gap: 9px 14px;
   margin: 0 0 20px;
   font-size: 14px;
@@ -124,7 +128,7 @@
 
 .paperpet-preferences__pack-status {
   max-width: 1040px;
-  margin-top: 26px;
+  margin: 0 0 30px;
   padding-top: 18px;
   border-top: 1px solid color-mix(in srgb, currentColor 16%, transparent);
 }
@@ -213,6 +217,119 @@
 #paperpet-preferences-status {
   color: #607864;
   font-size: 12px;
+}
+
+.paperpet-preview {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.paperpet-preview__canvas {
+  display: grid;
+  place-items: center;
+  height: 180px;
+  border-radius: 16px;
+  background: color-mix(in srgb, #809785 12%, transparent);
+}
+
+#paperpet-preview-image {
+  object-fit: contain;
+  max-width: 156px;
+  max-height: 156px;
+}
+
+.paperpet-number,
+.paperpet-preview select {
+  box-sizing: border-box;
+  width: 100%;
+  color: inherit;
+  background: color-mix(in srgb, Canvas 90%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 6px;
+  padding: 5px;
+  font: inherit;
+}
+
+.paperpet-preview select {
+  width: auto;
+  margin: 8px;
+}
+.paperpet-advanced {
+  margin: 0 0 20px;
+}
+.paperpet-advanced > summary {
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 10px 0;
+}
+.paperpet-advanced[open] > summary {
+  margin-bottom: 16px;
+}
+.paperpet-group-reset {
+  color: inherit;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.paperpet-preferences input:disabled {
+  opacity: 0.45;
+}
+.paperpet-preferences :focus-visible {
+  outline: 2px solid #809785;
+  outline-offset: 3px;
+}
+.paperpet-preferences__header .paperpet-preferences__tool-actions {
+  margin-top: 16px;
+  justify-content: start;
+}
+.paperpet-preferences__pack-status .paperpet-preferences__tools {
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.paperpet-preferences__pack-status
+  .paperpet-preferences__tools
+  > div:first-child {
+  display: none;
+}
+.paperpet-preferences__footer {
+  position: sticky;
+  bottom: 0;
+  background: Canvas;
+  padding-bottom: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .paperpet-preference output,
+  #paperpet-preferences-status,
+  .paperpet-preferences__eyebrow {
+    color: #b2cdb9;
+  }
+}
+
+@media (max-width: 480px) {
+  .paperpet-preview {
+    grid-template-columns: 1fr;
+  }
+  .paperpet-preference {
+    grid-template-columns: minmax(0, 1fr) 68px;
+  }
+  .paperpet-preference output {
+    grid-column: 1 / -1;
+  }
+  .paperpet-preference--toggle {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .paperpet-pack-status__row,
+  .paperpet-pack-status__error {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
 }
 
 @media (max-width: 760px) {

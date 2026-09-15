@@ -154,7 +154,10 @@ export class PetOverlay {
     this.companion.style.width = `${settings.petSize}px`;
     this.companion.style.height = `${settings.petSize}px`;
     this.companion.style.opacity = String(settings.petOpacity / 100);
-    this.companion.style.setProperty("--paperpet-size", `${settings.petSize}px`);
+    this.companion.style.setProperty(
+      "--paperpet-size",
+      `${settings.petSize}px`,
+    );
     this.companion.style.setProperty(
       "--paperpet-opacity",
       String(settings.petOpacity / 100),
@@ -166,6 +169,36 @@ export class PetOverlay {
   public setCharacterPack(pack?: CharacterPackPresentation): void {
     this.characterPack = pack;
     this.renderCharacterAction(this.snapshot?.mode ?? "idle");
+  }
+
+  public resetPosition(): void {
+    if (!this.companion) return;
+    this.dragState = undefined;
+    this.companion.dataset.dragging = "false";
+    this.companion.style.left = "auto";
+    this.companion.style.top = "auto";
+    this.companion.style.right = "24px";
+    this.companion.style.bottom = "22px";
+    this.keepInsideWindow();
+  }
+
+  public getPreviewURL(mode: "idle" | "reading" | "sleeping"): string {
+    if (!this.characterPack) return `${this.rootURI}content/paperpet-icon.png`;
+    const resolved = resolveCharacterAction(
+      this.characterPack.manifest,
+      readingModeToCharacterAction(mode),
+    );
+    const asset = resolved.variants[0].asset;
+    if (!/\.(?:apng|png|webp)$/i.test(asset))
+      return `${this.rootURI}content/paperpet-icon.png`;
+    return PathUtils.toFileURI(
+      asset
+        .split("/")
+        .reduce(
+          (path, segment) => PathUtils.join(path, segment),
+          this.characterPack.installPath,
+        ),
+    );
   }
 
   public updateReadingState(snapshot: ReadingActivitySnapshot): void {

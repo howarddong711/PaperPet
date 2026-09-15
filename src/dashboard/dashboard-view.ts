@@ -19,6 +19,9 @@ export interface DashboardActions {
 export class DashboardView {
   private tabID?: string;
   private root?: HTMLDivElement;
+  private days: 7 | 30 = 7;
+  private detailItem?: RecentReadingItem;
+  private revision = 0;
 
   public constructor(
     private readonly window: _ZoteroTypes.MainWindow,
@@ -49,6 +52,7 @@ export class DashboardView {
   }
 
   public destroy(): void {
+    this.revision++;
     this.root?.remove();
     this.root = undefined;
     this.tabID = undefined;
@@ -59,40 +63,60 @@ export class DashboardView {
       return;
     }
     this.renderLoading();
+    this.detailItem = undefined;
+    const revision = ++this.revision;
     let data: ReadingOverviewData;
     let growth: GrowthSnapshot;
     try {
       [data, growth] = await Promise.all([
-        this.repository.getOverview(7),
+        this.repository.getOverview(this.days),
         this.getGrowth(),
       ]);
     } catch (error) {
-      this.renderError(error);
+      if (revision === this.revision) this.renderError(error);
       return;
     }
-    if (!this.root) {
+    if (!this.root || revision !== this.revision) {
       return;
     }
     this.root.replaceChildren();
 
     const header = this.createHeader(
       this.copy("最近阅读", "Recent reading"),
-      this.copy("最近七天 · 本地数据", "Last seven days · Local data"),
+      this.copy(
+        `最近 ${this.days} 天 · 按会话开始日期统计`,
+        `Last ${this.days} days · By session start date`,
+      ),
     );
+    const range = this.createElement("select");
+    range.className = "paperpet-dashboard__tool";
+    range.setAttribute("aria-label", this.copy("统计时间范围", "Date range"));
+    for (const days of [7, 30] as const) {
+      const option = this.createElement("option");
+      option.value = String(days);
+      option.textContent = this.copy(`近 ${days} 天`, `Last ${days} days`);
+      option.selected = days === this.days;
+      range.appendChild(option);
+    }
+    range.addEventListener("change", () => {
+      this.days = range.value === "30" ? 30 : 7;
+      void this.renderOverview();
+    });
+    header.querySelector(".paperpet-dashboard__tools")?.prepend(range);
     const current = this.getCurrentSession();
     const metrics = this.createElement("section");
     metrics.className = "paperpet-dashboard__metrics";
     metrics.append(
       this.metric(
-        this.copy("有效阅读", "Effective reading"),
+        this.copy("估计阅读时长", "Estimated reading time"),
         formatDuration(data.effectiveSeconds, Zotero.locale),
       ),
       this.metric(
-        this.copy("前台阅读器", "Foreground reader"),
+        this.copy("阅读器前台时长", "Foreground reader time"),
         formatDuration(data.foregroundSeconds, Zotero.locale),
       ),
       this.metric(this.copy("阅读会话", "Sessions"), String(data.sessionCount)),
-      this.metric(this.copy("读过论文", "Papers"), String(data.paperCount)),
+      this.metric(this.copy("阅读文献", "Documents"), String(data.paperCount)),
     );
 
     const main = this.createElement("div");
@@ -112,25 +136,32 @@ export class DashboardView {
     this.root.append(header, metrics, main);
   }
 
-  private async renderItemDetail(item: RecentReadingItem): Promise<void> {
+  private async renderItemDetail(
+    item: RecentReadingItem,
+    notice?: string,
+  ): Promise<void> {
     if (!this.root) {
       return;
     }
     this.renderLoading();
+    this.detailItem = item;
+    const revision = ++this.revision;
     let detail: ItemReadingDetail;
     try {
       detail = await this.repository.getItemDetail(item);
     } catch (error) {
-      this.renderError(error);
+      if (revision === this.revision) this.renderError(error);
       return;
     }
-    if (!this.root) {
+    if (!this.root || revision !== this.revision) {
       return;
     }
+    item = detail.item;
+    this.detailItem = item;
     this.root.replaceChildren();
     const header = this.createHeader(
       item.title,
-      this.copy("论文阅读详情", "Paper reading details"),
+      this.copy("文献阅读详情 · 全部时间", "Document details · All time"),
     );
     const back = this.createElement("button");
     back.className = "paperpet-dashboard__back";
@@ -164,6 +195,11 @@ export class DashboardView {
       this.renderItemBehaviors(detail),
     );
     this.root.append(header, metrics, content);
+    if (notice) {
+      const status = this.empty(notice);
+      status.setAttribute("role", "status");
+      metrics.before(status);
+    }
   }
 
   private createHeader(title: string, eyebrow: string): HTMLElement {
@@ -209,7 +245,35 @@ export class DashboardView {
       "仅保存在本机",
       "Stored only on this device",
     );
-    tools.append(backup, restore, clear, privacy);
+    const management = this.createElement("details");
+    management.className = "paperpet-data-menu";
+    const summary = this.createElement("summary");
+    summary.textContent = this.copy("数据管理", "Manage data");
+    const menu = this.createElement("div");
+    menu.className = "paperpet-data-menu__body";
+    clear.classList.add("paperpet-data-menu__danger");
+    menu.append(
+      this.empty(
+        this.copy(
+          "管理全部本地记录，不受日期范围限制。",
+          "Manage all local records, regardless of the selected date range.",
+        ),
+      ),
+      backup,
+      restore,
+      clear,
+    );
+    management.append(summary, menu);
+    tools.append(management, privacy);
+    const refresh = this.createElement("button");
+    refresh.type = "button";
+    refresh.className = "paperpet-dashboard__tool";
+    refresh.textContent = this.copy("刷新", "Refresh");
+    refresh.addEventListener("click", () => {
+      if (this.detailItem) void this.renderItemDetail(this.detailItem);
+      else void this.renderOverview();
+    });
+    tools.prepend(refresh);
     header.append(copy, tools);
     return header;
   }
@@ -236,24 +300,56 @@ export class DashboardView {
 
   private renderDailyChart(data: ReadingOverviewData): HTMLElement {
     const section = this.section(this.copy("每日阅读", "Daily reading"));
+    const legend = this.empty(
+      this.copy(
+        "深色：估计阅读 · 浅色：阅读器前台时间",
+        "Solid: estimated reading · Faint: foreground reader time",
+      ),
+    );
+    section.appendChild(legend);
+    if (!data.daily.some((point) => point.foregroundSeconds > 0)) {
+      section.appendChild(
+        this.empty(
+          this.copy(
+            "这段时间还没有阅读记录。打开一篇文献开始阅读，记录会显示在这里。",
+            "No reading recorded in this period. Open a document to begin.",
+          ),
+        ),
+      );
+      return section;
+    }
     const chart = this.createElement("div");
     chart.className = "paperpet-chart";
     const maximum = Math.max(
       60,
       ...data.daily.map((point) => point.foregroundSeconds),
     );
+    chart.style.gridTemplateColumns = `repeat(${Math.max(1, data.daily.length)}, minmax(24px, 1fr))`;
+    section.appendChild(
+      this.empty(
+        this.copy(
+          `刻度：0 — ${formatDuration(maximum, Zotero.locale)}`,
+          `Scale: 0 — ${formatDuration(maximum, Zotero.locale)}`,
+        ),
+      ),
+    );
     for (const point of data.daily) {
       const column = this.createElement("div");
       column.className = "paperpet-chart__column";
       const bars = this.createElement("div");
       bars.className = "paperpet-chart__bars";
-      bars.title = `${point.date}: ${formatDuration(point.effectiveSeconds, Zotero.locale)}`;
+      bars.title = `${point.date} · ${this.copy("估计阅读", "Estimated reading")}: ${formatDuration(point.effectiveSeconds, Zotero.locale)} · ${this.copy("前台时间", "Foreground time")}: ${formatDuration(point.foregroundSeconds, Zotero.locale)}`;
+      bars.tabIndex = 0;
+      bars.setAttribute("role", "img");
+      bars.setAttribute("aria-label", bars.title);
       const foreground = this.createElement("span");
       foreground.className = "paperpet-chart__foreground";
-      foreground.style.height = `${Math.max(2, (point.foregroundSeconds / maximum) * 100)}%`;
+      foreground.style.height = `${(point.foregroundSeconds / maximum) * 100}%`;
+      foreground.hidden = point.foregroundSeconds <= 0;
       const effective = this.createElement("span");
       effective.className = "paperpet-chart__effective";
-      effective.style.height = `${Math.max(2, (point.effectiveSeconds / maximum) * 100)}%`;
+      effective.style.height = `${(point.effectiveSeconds / maximum) * 100}%`;
+      effective.hidden = point.effectiveSeconds <= 0;
       bars.append(foreground, effective);
       const label = this.createElement("span");
       label.className = "paperpet-chart__label";
@@ -261,13 +357,17 @@ export class DashboardView {
       column.append(bars, label);
       chart.appendChild(column);
     }
-    section.appendChild(chart);
+    const scroll = this.createElement("div");
+    scroll.className = "paperpet-chart-scroll";
+    chart.style.minWidth = `${data.daily.length * 42}px`;
+    scroll.appendChild(chart);
+    section.appendChild(scroll);
     return section;
   }
 
   private renderRecentItems(data: ReadingOverviewData): HTMLElement {
     const section = this.section(
-      this.copy("最近阅读的论文", "Recently read papers"),
+      this.copy("最近阅读的文献", "Recently read documents"),
     );
     const list = this.createElement("div");
     list.className = "paperpet-paper-list";
@@ -293,7 +393,9 @@ export class DashboardView {
   }
 
   private renderCurrentSession(current?: CurrentSessionSummary): HTMLElement {
-    const section = this.section(this.copy("当前会话", "Current session"));
+    const section = this.section(
+      this.copy("阅读会话快照", "Reading session snapshot"),
+    );
     if (!current) {
       section.appendChild(
         this.empty(this.copy("打开一篇论文开始阅读", "Open a paper to begin")),
@@ -307,11 +409,30 @@ export class DashboardView {
     time.className = "paperpet-current__time";
     time.textContent = formatDuration(current.effectiveSeconds, Zotero.locale);
     section.append(title, time);
+    section.appendChild(
+      this.empty(
+        this.copy(
+          "此处展示打开或刷新报告时的记录。离开 PDF 查看报告时，暂停阅读计时。",
+          "Recorded when this report was opened or refreshed. Reading time pauses while viewing the report instead of the PDF.",
+        ),
+      ),
+    );
     return section;
   }
 
   private renderReadingRatio(data: ReadingOverviewData): HTMLElement {
     const section = this.section(this.copy("识别比例", "Recognized ratio"));
+    if (data.foregroundSeconds < 300) {
+      section.appendChild(
+        this.empty(
+          this.copy(
+            "累计前台阅读不足 5 分钟，暂不展示比例。阅读时长仍会正常记录。",
+            "Less than five minutes of foreground reading; the ratio is hidden. Reading time is still recorded.",
+          ),
+        ),
+      );
+      return section;
+    }
     const ratio =
       data.foregroundSeconds > 0
         ? Math.min(1, data.effectiveSeconds / data.foregroundSeconds)
@@ -366,7 +487,9 @@ export class DashboardView {
   }
 
   private renderGrowth(growth: GrowthSnapshot): HTMLElement {
-    const section = this.section(this.copy("陪伴成长", "Companion growth"));
+    const section = this.section(
+      this.copy("陪伴成长 · 全部时间", "Companion growth · All time"),
+    );
     const level = this.createElement("strong");
     level.className = "paperpet-growth__level";
     level.textContent = this.copy(
@@ -384,7 +507,7 @@ export class DashboardView {
   }
 
   private renderItemTrend(detail: ItemReadingDetail): HTMLElement {
-    return this.renderDailyChart({
+    const chart = this.renderDailyChart({
       daily: detail.daily.slice(-14),
       behaviors: [],
       recentItems: [],
@@ -393,14 +516,28 @@ export class DashboardView {
       sessionCount: detail.item.sessionCount,
       paperCount: 1,
     });
+    chart.querySelector("h2")!.textContent = this.copy(
+      "最近 14 个有记录的日期",
+      "Last 14 recorded dates",
+    );
+    return chart;
   }
 
   private renderSessionList(detail: ItemReadingDetail): HTMLElement {
     const section = this.section(this.copy("阅读会话", "Reading sessions"));
     const list = this.createElement("div");
     list.className = "paperpet-session-list";
+    section.appendChild(
+      this.empty(
+        this.copy(
+          "最近 50 次会话；已排除的会话不计入累计统计。",
+          "Latest 50 sessions; excluded sessions do not count toward totals.",
+        ),
+      ),
+    );
     for (const session of detail.sessions) {
       const row = this.createElement("div");
+      row.dataset.excluded = String(session.excluded);
       const date = this.createElement("span");
       date.textContent = formatDateTime(session.startedAt);
       const time = this.createElement("strong");
@@ -409,23 +546,38 @@ export class DashboardView {
         Zotero.locale,
       );
       const annotation = this.createElement("span");
-      annotation.textContent = this.copy(
-        `${session.annotationCount} 条批注`,
-        `${session.annotationCount} annotations`,
-      );
+      annotation.textContent =
+        (session.excluded ? this.copy("已排除 · ", "Excluded · ") : "") +
+        this.copy(
+          `${session.annotationCount} 条批注`,
+          `${session.annotationCount} annotations`,
+        );
       const action = this.createElement("button");
       action.type = "button";
       action.className = "paperpet-session-list__action";
       action.textContent = session.excluded
         ? this.copy("恢复统计", "Include")
         : this.copy("排除", "Exclude");
-      action.addEventListener(
-        "click",
-        () =>
-          void this.runAction(() =>
-            this.actions.onExcludeSession(session.id, !session.excluded),
-          ),
-      );
+      action.addEventListener("click", async () => {
+        action.disabled = true;
+        try {
+          await this.actions.onExcludeSession(session.id, !session.excluded);
+          await this.renderItemDetail(
+            detail.item,
+            session.excluded
+              ? this.copy("已恢复此会话的统计。", "Session included again.")
+              : this.copy(
+                  "已排除此会话，可随时恢复统计。",
+                  "Session excluded; you can include it again anytime.",
+                ),
+          );
+        } catch (error) {
+          action.disabled = false;
+          const message = this.empty(String(error));
+          message.setAttribute("role", "alert");
+          section.appendChild(message);
+        }
+      });
       row.append(date, time, annotation, action);
       list.appendChild(row);
     }
@@ -503,11 +655,14 @@ export class DashboardView {
   }
 }
 
-function formatDuration(totalSeconds: number, locale: string): string {
-  const minutes = Math.max(0, Math.round(totalSeconds / 60));
-  if (minutes < 1) {
-    return locale.startsWith("zh") ? "< 1 分钟" : "< 1 min";
+export function formatDuration(totalSeconds: number, locale: string): string {
+  const seconds = Number.isFinite(totalSeconds)
+    ? Math.max(0, Math.floor(totalSeconds))
+    : 0;
+  if (seconds < 60) {
+    return locale.startsWith("zh") ? `${seconds} 秒` : `${seconds} sec`;
   }
+  const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const remaining = minutes % 60;
   if (hours === 0) {

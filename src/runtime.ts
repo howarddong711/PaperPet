@@ -37,6 +37,8 @@ export interface PublishedPreferenceAPI {
   openDashboard: () => Promise<void>;
   installCharacterPack: () => Promise<string | undefined>;
   getCharacterPackStatus: () => CharacterPackStatus;
+  getPreviewURL: (mode: "idle" | "reading" | "sleeping") => string;
+  resetPetPosition: () => void;
 }
 
 export class PaperPetRuntime {
@@ -102,8 +104,17 @@ export class PaperPetRuntime {
         onImportBackup: async () => {
           const source = await this.chooseBackupSource(window);
           if (source) {
+            const confirmed = Services.prompt.confirm(
+              window as unknown as mozIDOMWindowProxy,
+              "PaperPet",
+              Zotero.locale.startsWith("zh")
+                ? "导入备份将替换全部 PaperPet 本地记录与设置。建议先备份当前数据。继续导入？"
+                : "Importing replaces all local PaperPet records and settings. Back up your current data first. Continue?",
+            );
+            if (!confirmed) return;
             await this.sessions.discardActiveSession();
             await this.database.importBackup(source);
+            this.applySettings(await this.settingsStore.load());
           }
         },
         onClearData: async () => {
@@ -242,6 +253,13 @@ export class PaperPetRuntime {
       openDashboard: () => this.openDashboard(),
       installCharacterPack: () => this.installCharacterPack(),
       getCharacterPackStatus: () => ({ ...this.characterPackStatus }),
+      getPreviewURL: (mode) =>
+        this.companions.values().next().value?.overlay.getPreviewURL(mode) ??
+        `${this.rootURI}content/paperpet-icon.png`,
+      resetPetPosition: () => {
+        for (const { overlay } of this.companions.values())
+          overlay.resetPosition();
+      },
     };
     (Zotero as unknown as { PaperPet?: PublishedPreferenceAPI }).PaperPet =
       preferenceAPI;

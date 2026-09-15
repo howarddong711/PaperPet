@@ -6,9 +6,12 @@
 >
   <html:div class="paperpet-preferences">
     <html:header class="paperpet-preferences__header">
-      <html:span class="paperpet-preferences__eyebrow">本地偏好</html:span>
+      <html:span class="paperpet-preferences__eyebrow">本地偏好 · 0.4.1</html:span>
       <html:h1>PaperPet</html:h1>
       <html:p>调整陪伴阅读时的外观、交互和阅读状态识别方式。</html:p>
+      <html:div class="paperpet-preferences__tool-actions">
+        <html:button id="paperpet-open-report" type="button">打开阅读报告</html:button>
+      </html:div>
     </html:header>
 
     <html:div class="paperpet-preferences__grid">
@@ -51,8 +54,8 @@
         </html:label>
       </html:section>
 
-      <html:section class="paperpet-preferences__section">
-        <html:h2>点击与拖动</html:h2>
+      <html:details class="paperpet-preferences__section paperpet-advanced">
+        <html:summary>高级设置：点击与拖动</html:summary>
         <html:label class="paperpet-preference" for="paperpet-drag-threshold">
           <html:span>拖动判定距离</html:span>
           <html:output id="paperpet-drag-threshold-value">6px</html:output>
@@ -85,7 +88,7 @@
         <html:p class="paperpet-preferences__note">
           按住宠物任意位置移动，位移达到阈值后只判定为拖动，不会误触发点击。
         </html:p>
-      </html:section>
+      </html:details>
 
       <html:section class="paperpet-preferences__section">
         <html:h2>阅读识别</html:h2>
@@ -97,9 +100,11 @@
           />
           <html:span>
             <html:strong>记录阅读活动</html:strong>
-            <html:small>关闭后停止新增阅读时间和动作记录。</html:small>
+            <html:small>关闭后停止新增阅读时间和动作记录，已有记录仍然保留。</html:small>
           </html:span>
         </html:label>
+        <html:details class="paperpet-advanced">
+        <html:summary>高级设置：阅读估计</html:summary>
         <html:label class="paperpet-preference" for="paperpet-wpm">
           <html:span>估计阅读速度</html:span>
           <html:output id="paperpet-wpm-value">200 字/分</html:output>
@@ -113,7 +118,7 @@
           />
         </html:label>
         <html:label class="paperpet-preference" for="paperpet-default-dwell">
-          <html:span>无文本页面默认停留</html:span>
+          <html:span>扫描页预计阅读时间</html:span>
           <html:output id="paperpet-default-dwell-value">60 秒</html:output>
           <html:input
             id="paperpet-default-dwell"
@@ -124,6 +129,8 @@
             step="5"
           />
         </html:label>
+        <html:p>用于无法识别文字的页面，帮助估计阅读时间。</html:p>
+        </html:details>
         <html:label class="paperpet-preference" for="paperpet-sleep-delay">
           <html:span>暂离后进入睡眠</html:span>
           <html:output id="paperpet-sleep-delay-value">15 秒</html:output>
@@ -137,7 +144,7 @@
           />
         </html:label>
         <html:p class="paperpet-preferences__note">
-          切到其他应用或 Zotero 标签页时，前台阅读硬门控会立即停止计时。
+          切到其他应用或离开 PDF 标签页时，暂停阅读计时。
         </html:p>
       </html:section>
 
@@ -156,7 +163,7 @@
           />
         </html:label>
         <html:p class="paperpet-preferences__note">
-          每日与论文聚合长期保留，这里只控制滚动、翻页等详细动作事件。
+          阅读时长与文献统计长期保留，这里只控制滚动、翻页等详细动作记录。
         </html:p>
       </html:section>
     </html:div>
@@ -173,20 +180,35 @@
         <html:button id="paperpet-install-pack" type="button"
           >安装角色包…</html:button
         >
-        <html:button id="paperpet-open-report" type="button"
-          >打开阅读报告</html:button
-        >
+        <html:button id="paperpet-reset-position" type="button">重置宠物位置</html:button>
       </html:div>
     </html:section>
 
     <html:section class="paperpet-preferences__pack-status">
-      <html:h2>角色包状态</html:h2>
+      <html:h2>当前角色</html:h2>
+      <html:div class="paperpet-preview">
+        <html:div class="paperpet-preview__canvas">
+          <html:img id="paperpet-preview-image" alt="当前角色预览" />
+        </html:div>
+        <html:div>
+          <html:label for="paperpet-preview-mode">预览动作</html:label>
+          <html:select id="paperpet-preview-mode">
+            <html:option value="idle">待机</html:option>
+            <html:option value="reading">阅读</html:option>
+            <html:option value="sleeping">睡眠</html:option>
+          </html:select>
+          <html:p id="paperpet-preview-size"></html:p>
+          <html:p>预览随外观设置即时变化；大尺寸按比例缩小展示。</html:p>
+        </html:div>
+      </html:div>
       <html:div class="paperpet-pack-status__row">
         <html:span>当前状态</html:span>
         <html:strong id="paperpet-character-pack-status-value"
           >正在检查角色包…</html:strong
         >
       </html:div>
+      <html:details id="paperpet-pack-diagnostics" class="paperpet-advanced">
+      <html:summary>诊断详情</html:summary>
       <html:div class="paperpet-pack-status__row">
         <html:span>角色包路径</html:span>
         <html:code id="paperpet-character-pack-path-value"
@@ -203,10 +225,11 @@
         <html:span>错误信息</html:span>
         <html:code id="paperpet-character-pack-error-value">无</html:code>
       </html:div>
+      </html:details>
     </html:section>
 
     <html:footer class="paperpet-preferences__footer">
-      <html:span id="paperpet-preferences-status"></html:span>
+      <html:span id="paperpet-preferences-status" role="status" aria-live="polite">修改后自动保存</html:span>
       <html:button id="paperpet-preferences-reset" type="button"
         >恢复默认设置</html:button
       >
