@@ -158,7 +158,49 @@
 }
 
 .paperpet-pack-status__error code {
+  color: var(--paperpet-settings-muted);
+}
+
+#paperpet-pack-diagnostics {
+  margin-top: 8px;
+}
+
+#paperpet-pack-diagnostics[open] {
+  padding-bottom: 4px;
+}
+
+#paperpet-pack-diagnostics .paperpet-pack-status__row,
+#paperpet-pack-diagnostics .paperpet-pack-status__error {
+  display: block;
+  padding: 12px 0;
+}
+
+#paperpet-pack-diagnostics .paperpet-pack-status__row > span,
+#paperpet-pack-diagnostics .paperpet-pack-status__error > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--paperpet-settings-muted);
+  font-size: 12px;
+}
+
+#paperpet-pack-diagnostics code {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 11px;
+  overflow-x: auto;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+  border-radius: 6px;
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+
+#paperpet-pack-diagnostics[data-has-error="true"]
+  .paperpet-pack-status__error
+  code {
   color: var(--paperpet-red);
+  background: color-mix(in srgb, var(--paperpet-red) 8%, transparent);
 }
 
 .paperpet-preferences__tools h2 {

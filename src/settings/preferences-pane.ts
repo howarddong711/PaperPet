@@ -56,7 +56,10 @@ function renderCharacterPackStatus(api: PaperPetPreferenceAPI): void {
   const diagnostics = document.getElementById(
     "paperpet-pack-diagnostics",
   ) as HTMLDetailsElement | null;
-  if (diagnostics && packStatus.state === "error") diagnostics.open = true;
+  if (diagnostics) {
+    diagnostics.dataset.hasError = String(Boolean(packStatus.error));
+    if (packStatus.state === "error") diagnostics.open = true;
+  }
 }
 
 function init(): void {
