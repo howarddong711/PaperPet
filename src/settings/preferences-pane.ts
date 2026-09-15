@@ -14,7 +14,9 @@ interface PaperPetPreferenceAPI {
   openDashboard: () => Promise<void>;
   installCharacterPack: () => Promise<string | undefined>;
   getCharacterPackStatus: () => CharacterPackStatus;
-  getPreviewURL: (mode: "idle" | "reading" | "sleeping") => string;
+  getPreviewURL: (
+    mode: "idle" | "reading" | "thinking" | "annotating" | "sleeping" | "away",
+  ) => string;
   resetPetPosition: () => void;
 }
 
@@ -86,24 +88,27 @@ function init(): void {
   if (packSection && grid) grid.before(packSection);
   const tools = root.querySelector(".paperpet-preferences__tools");
   if (tools && packSection) packSection.appendChild(tools);
-  const preview = document.getElementById(
-    "paperpet-preview-image",
-  ) as HTMLImageElement;
-  const previewMode = document.getElementById(
-    "paperpet-preview-mode",
-  ) as HTMLSelectElement;
+  const previewModes = [
+    "idle",
+    "reading",
+    "thinking",
+    "annotating",
+    "sleeping",
+    "away",
+  ] as const;
   const updatePreview = (settings: PaperPetSettings): void => {
-    const mode =
-      previewMode.value === "sleeping"
-        ? "sleeping"
-        : previewMode.value === "reading"
-          ? "reading"
-          : "idle";
-    const url = api.getPreviewURL(mode);
-    if (preview.getAttribute("src") !== url) preview.src = url;
-    preview.style.width = `${Math.min(156, settings.petSize)}px`;
-    preview.style.height = `${Math.min(156, settings.petSize)}px`;
-    preview.style.opacity = String(settings.petOpacity / 100);
+    for (const mode of previewModes) {
+      const preview = document.getElementById(
+        `paperpet-preview-${mode}`,
+      ) as HTMLImageElement | null;
+      if (!preview) continue;
+      const url = api.getPreviewURL(mode);
+      if (preview.getAttribute("src") !== url) preview.src = url;
+      const previewSize = Math.min(88, Math.max(44, settings.petSize * 0.45));
+      preview.style.width = `${previewSize}px`;
+      preview.style.height = `${previewSize}px`;
+      preview.style.opacity = String(settings.petOpacity / 100);
+    }
     document.getElementById("paperpet-preview-size")!.textContent =
       `实际尺寸 ${settings.petSize}px · 透明度 ${settings.petOpacity}%`;
     for (const key of ["personalWordsPerMinute", "defaultExpectedSeconds"]) {
@@ -278,7 +283,6 @@ function init(): void {
 
   render(api.getSettings());
   renderCharacterPackStatus(api);
-  previewMode.addEventListener("change", () => updatePreview(read()));
   document
     .getElementById("paperpet-reset-position")
     ?.addEventListener("click", () => {

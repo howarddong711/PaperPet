@@ -182,7 +182,9 @@ export class PetOverlay {
     this.keepInsideWindow();
   }
 
-  public getPreviewURL(mode: "idle" | "reading" | "sleeping"): string {
+  public getPreviewURL(
+    mode: "idle" | "reading" | "thinking" | "annotating" | "sleeping" | "away",
+  ): string {
     if (!this.characterPack) return `${this.rootURI}content/paperpet-icon.png`;
     const resolved = resolveCharacterAction(
       this.characterPack.manifest,

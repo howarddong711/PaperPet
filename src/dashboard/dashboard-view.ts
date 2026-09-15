@@ -84,12 +84,13 @@ export class DashboardView {
     const header = this.createHeader(
       this.copy("最近阅读", "Recent reading"),
       this.copy(
-        `最近 ${this.days} 天 · 按会话开始日期统计`,
-        `Last ${this.days} days · By session start date`,
+        `最近 ${this.days} 天 · 本地数据 · 按会话开始日期统计`,
+        `Last ${this.days} days · Local data · By session start date`,
       ),
     );
     const range = this.createElement("select");
-    range.className = "paperpet-dashboard__tool";
+    range.className =
+      "paperpet-dashboard__tool paperpet-dashboard__range-select";
     range.setAttribute("aria-label", this.copy("统计时间范围", "Date range"));
     for (const days of [7, 30] as const) {
       const option = this.createElement("option");
@@ -161,7 +162,10 @@ export class DashboardView {
     this.root.replaceChildren();
     const header = this.createHeader(
       item.title,
-      this.copy("文献阅读详情 · 全部时间", "Document details · All time"),
+      this.copy(
+        "文献阅读详情 · 全部时间 · 本地数据",
+        "Document details · All time · Local data",
+      ),
     );
     const back = this.createElement("button");
     back.className = "paperpet-dashboard__back";
@@ -239,12 +243,6 @@ export class DashboardView {
       "click",
       () => void this.runAction(this.actions.onClearData),
     );
-    const privacy = this.createElement("span");
-    privacy.className = "paperpet-dashboard__privacy";
-    privacy.textContent = this.copy(
-      "仅保存在本机",
-      "Stored only on this device",
-    );
     const management = this.createElement("details");
     management.className = "paperpet-data-menu";
     const summary = this.createElement("summary");
@@ -264,11 +262,11 @@ export class DashboardView {
       clear,
     );
     management.append(summary, menu);
-    tools.append(management, privacy);
+    tools.append(management);
     const refresh = this.createElement("button");
     refresh.type = "button";
     refresh.className = "paperpet-dashboard__tool";
-    refresh.textContent = this.copy("刷新", "Refresh");
+    refresh.textContent = this.copy("刷新数据", "Refresh data");
     refresh.addEventListener("click", () => {
       if (this.detailItem) void this.renderItemDetail(this.detailItem);
       else void this.renderOverview();

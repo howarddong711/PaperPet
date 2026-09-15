@@ -37,7 +37,9 @@ export interface PublishedPreferenceAPI {
   openDashboard: () => Promise<void>;
   installCharacterPack: () => Promise<string | undefined>;
   getCharacterPackStatus: () => CharacterPackStatus;
-  getPreviewURL: (mode: "idle" | "reading" | "sleeping") => string;
+  getPreviewURL: (
+    mode: "idle" | "reading" | "thinking" | "annotating" | "sleeping" | "away",
+  ) => string;
   resetPetPosition: () => void;
 }
 

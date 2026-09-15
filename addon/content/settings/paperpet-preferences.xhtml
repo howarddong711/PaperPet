@@ -187,20 +187,33 @@
     <html:section class="paperpet-preferences__pack-status">
       <html:h2>当前角色</html:h2>
       <html:div class="paperpet-preview">
-        <html:div class="paperpet-preview__canvas">
-          <html:img id="paperpet-preview-image" alt="当前角色预览" />
-        </html:div>
-        <html:div>
-          <html:label for="paperpet-preview-mode">预览动作</html:label>
-          <html:select id="paperpet-preview-mode">
-            <html:option value="idle">待机</html:option>
-            <html:option value="reading">阅读</html:option>
-            <html:option value="sleeping">睡眠</html:option>
-          </html:select>
-          <html:p id="paperpet-preview-size"></html:p>
-          <html:p>预览随外观设置即时变化；大尺寸按比例缩小展示。</html:p>
-        </html:div>
+        <html:figure class="paperpet-preview__state">
+          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-idle" alt="待机状态预览" /></html:div>
+          <html:figcaption>待机</html:figcaption>
+        </html:figure>
+        <html:figure class="paperpet-preview__state">
+          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-reading" alt="阅读状态预览" /></html:div>
+          <html:figcaption>阅读</html:figcaption>
+        </html:figure>
+        <html:figure class="paperpet-preview__state">
+          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-thinking" alt="思考状态预览" /></html:div>
+          <html:figcaption>思考</html:figcaption>
+        </html:figure>
+        <html:figure class="paperpet-preview__state">
+          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-annotating" alt="批注状态预览" /></html:div>
+          <html:figcaption>批注</html:figcaption>
+        </html:figure>
+        <html:figure class="paperpet-preview__state">
+          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-sleeping" alt="睡眠状态预览" /></html:div>
+          <html:figcaption>睡眠</html:figcaption>
+        </html:figure>
+        <html:figure class="paperpet-preview__state">
+          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-away" alt="暂离状态预览" /></html:div>
+          <html:figcaption>暂离</html:figcaption>
+        </html:figure>
       </html:div>
+      <html:p id="paperpet-preview-size"></html:p>
+      <html:p>六种主要状态完整预览；尺寸较大时会按比例缩小展示。</html:p>
       <html:div class="paperpet-pack-status__row">
         <html:span>当前状态</html:span>
         <html:strong id="paperpet-character-pack-status-value"

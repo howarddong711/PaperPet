@@ -196,7 +196,7 @@
   gap: 16px;
   margin-top: 34px;
   border-top: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-  padding-top: 20px;
+  padding: 18px 0 4px;
 }
 
 .paperpet-preferences__footer button {
@@ -221,28 +221,39 @@
 
 .paperpet-preview {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 24px;
-  align-items: center;
-  margin-bottom: 18px;
+  grid-template-columns: repeat(3, minmax(92px, 1fr));
+  gap: 12px;
+  margin: 14px 0 12px;
 }
 
 .paperpet-preview__canvas {
   display: grid;
   place-items: center;
-  height: 180px;
-  border-radius: 16px;
+  height: 112px;
+  overflow: hidden;
+  border-radius: 12px;
   background: color-mix(in srgb, #809785 12%, transparent);
 }
 
-#paperpet-preview-image {
+.paperpet-preview__canvas img {
   object-fit: contain;
-  max-width: 156px;
-  max-height: 156px;
+  max-width: calc(100% - 12px);
+  max-height: calc(100% - 12px);
+}
+
+.paperpet-preview__state {
+  min-width: 0;
+  margin: 0;
+}
+.paperpet-preview__state figcaption {
+  margin-top: 6px;
+  color: var(--paperpet-settings-muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 .paperpet-number,
-.paperpet-preview select {
+.paperpet-number {
   box-sizing: border-box;
   width: 100%;
   color: inherit;
@@ -253,10 +264,6 @@
   font: inherit;
 }
 
-.paperpet-preview select {
-  width: auto;
-  margin: 8px;
-}
 .paperpet-advanced {
   margin: 0 0 20px;
 }
@@ -298,10 +305,8 @@
   display: none;
 }
 .paperpet-preferences__footer {
-  position: sticky;
-  bottom: 0;
-  background: Canvas;
-  padding-bottom: 12px;
+  position: static;
+  background: transparent;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -314,7 +319,7 @@
 
 @media (max-width: 480px) {
   .paperpet-preview {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(92px, 1fr));
   }
   .paperpet-preference {
     grid-template-columns: minmax(0, 1fr) 68px;
