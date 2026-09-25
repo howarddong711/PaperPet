@@ -5,7 +5,10 @@ import {
   isSafeCharacterPackPath,
   validateCharacterPack,
 } from "./character-pack";
-import { PaperPetDatabase } from "../storage/paperpet-database";
+import {
+  PaperPetDatabase,
+  type InstalledCharacterPackRecord,
+} from "../storage/paperpet-database";
 
 const IMAGE_PATTERN = /\.(?:apng|png|webp)$/i;
 const MANIFEST_MAX_BYTES = 1024 * 1024;
@@ -32,6 +35,45 @@ export class CharacterPackInstaller {
     private readonly database: PaperPetDatabase,
     private readonly window: _ZoteroTypes.MainWindow,
   ) {}
+
+  public listInstalled(): Promise<InstalledCharacterPackRecord[]> {
+    return this.database.getInstalledPacks();
+  }
+
+  public async enable(packID: string): Promise<InstalledCharacterPack> {
+    const record = (await this.database.getInstalledPacks()).find(
+      (candidate) => candidate.packID === packID,
+    );
+    if (!record) throw new Error(`Character pack is not installed: ${packID}`);
+    await this.database.enableInstalledPack(packID);
+    const pack = await this.readInstalledPack(record.installPath);
+    if (!pack) throw new Error(`Character pack files are missing: ${packID}`);
+    this.rememberActivePack(pack.installPath);
+    return pack;
+  }
+
+  public async disable(): Promise<void> {
+    await this.database.disableInstalledPacks();
+  }
+
+  public async remove(packID: string): Promise<void> {
+    const record = (await this.database.getInstalledPacks()).find(
+      (candidate) => candidate.packID === packID,
+    );
+    if (!record) return;
+    await this.database.removeInstalledPack(packID);
+    await IOUtils.remove(record.installPath, {
+      recursive: true,
+      ignoreAbsent: true,
+    });
+    const archive = PathUtils.join(
+      this.database.location.directoryPath,
+      "packs",
+      ".archives",
+      `${record.packID}--${record.version}.zpet`,
+    );
+    await IOUtils.remove(archive, { ignoreAbsent: true });
+  }
 
   public async install(
     archivePath: string,

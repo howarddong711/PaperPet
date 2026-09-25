@@ -32,6 +32,8 @@ export interface ReadingOverviewData {
   effectiveSeconds: number;
   sessionCount: number;
   paperCount: number;
+  startDate: string;
+  endDate: string;
 }
 
 export interface ReadingSessionRow {
@@ -56,12 +58,11 @@ export class DashboardRepository {
   public constructor(private readonly database: PaperPetDatabase) {}
 
   public async getOverview(
-    days = 7,
+    range: number | { startDate: string; endDate: string } = 30,
     now = Date.now(),
   ): Promise<ReadingOverviewData> {
-    const start = new Date(now);
-    start.setDate(start.getDate() - (days - 1));
-    const cutoff = startOfLocalDay(start.getTime());
+    const normalized = normalizeRange(range, now);
+    const { startDate, endDate, cutoff, endExclusive, days } = normalized;
     const [
       dailyRows,
       behaviorRows,
@@ -77,21 +78,22 @@ export class DashboardRepository {
           SUM(effective_seconds) AS effective_seconds,
           COUNT(*) AS session_count
         FROM reading_sessions
-        WHERE started_at >= ? AND deleted = 0 AND excluded = 0
+        WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0
         GROUP BY local_date
         ORDER BY local_date`,
-        [cutoff],
+        [cutoff, endExclusive],
       ),
       this.database.db.queryAsync(
         `SELECT semantic_events.event_type, SUM(semantic_events.event_count) AS event_count
         FROM semantic_events
         JOIN reading_sessions ON reading_sessions.id = semantic_events.session_id
-        WHERE semantic_events.started_at >= ?
+        WHERE semantic_events.started_at >= ? AND semantic_events.started_at < ?
+          AND reading_sessions.started_at >= ? AND reading_sessions.started_at < ?
           AND reading_sessions.deleted = 0
           AND reading_sessions.excluded = 0
         GROUP BY semantic_events.event_type
         ORDER BY event_count DESC`,
-        [cutoff],
+        [cutoff, endExclusive, cutoff, endExclusive],
       ),
       this.database.db.queryAsync(
         `SELECT library_id, item_key, attachment_key, title_snapshot,
@@ -99,31 +101,31 @@ export class DashboardRepository {
           SUM(effective_seconds) AS effective_seconds, COUNT(*) AS session_count,
           SUM(annotation_count) AS annotation_count, MAX(started_at) AS last_read_at
         FROM reading_sessions
-        WHERE started_at >= ? AND deleted = 0 AND excluded = 0
+        WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0
         GROUP BY library_id, item_key, attachment_key
         ORDER BY last_read_at DESC
         LIMIT 12`,
-        [cutoff],
+        [cutoff, endExclusive],
       ),
       this.database.db.valueQueryAsync<number>(
         `SELECT COALESCE(SUM(foreground_seconds), 0) FROM reading_sessions
-         WHERE started_at >= ? AND deleted = 0 AND excluded = 0`,
-        [cutoff],
+         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0`,
+        [cutoff, endExclusive],
       ),
       this.database.db.valueQueryAsync<number>(
         `SELECT COALESCE(SUM(effective_seconds), 0) FROM reading_sessions
-         WHERE started_at >= ? AND deleted = 0 AND excluded = 0`,
-        [cutoff],
+         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0`,
+        [cutoff, endExclusive],
       ),
       this.database.db.valueQueryAsync<number>(
         `SELECT COUNT(*) FROM reading_sessions
-         WHERE started_at >= ? AND deleted = 0 AND excluded = 0`,
-        [cutoff],
+         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0`,
+        [cutoff, endExclusive],
       ),
       this.database.db.valueQueryAsync<number>(
         `SELECT COUNT(DISTINCT library_id || ':' || item_key) FROM reading_sessions
-         WHERE started_at >= ? AND deleted = 0 AND excluded = 0`,
-        [cutoff],
+         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0`,
+        [cutoff, endExclusive],
       ),
     ]);
 
@@ -160,6 +162,8 @@ export class DashboardRepository {
       effectiveSeconds: Number(effectiveSeconds ?? 0),
       sessionCount: Number(sessionCount ?? 0),
       paperCount: Number(paperCount ?? 0),
+      startDate,
+      endDate,
     };
   }
 
@@ -260,7 +264,7 @@ function mapRecentItem(row: _ZoteroTypes.anyObj): RecentReadingItem {
     libraryID: Number(values.library_id),
     itemKey: String(values.item_key),
     attachmentKey: String(values.attachment_key),
-    title: String(values.title_snapshot || "Untitled"),
+    title: String(values.title_snapshot || ""),
     foregroundSeconds: Number(values.foreground_seconds),
     effectiveSeconds: Number(values.effective_seconds),
     sessionCount: Number(values.session_count),
@@ -281,4 +285,67 @@ function localDateFor(timestamp: number): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function normalizeRange(
+  range: number | { startDate: string; endDate: string },
+  now: number,
+): {
+  startDate: string;
+  endDate: string;
+  cutoff: number;
+  endExclusive: number;
+  days: number;
+} {
+  if (typeof range === "number") {
+    const days = Math.min(366, Math.max(1, Math.floor(range)));
+    const end = new Date(now);
+    const endExclusiveDate = new Date(end);
+    endExclusiveDate.setHours(0, 0, 0, 0);
+    endExclusiveDate.setDate(endExclusiveDate.getDate() + 1);
+    const start = new Date(endExclusiveDate);
+    start.setDate(start.getDate() - days);
+    return {
+      startDate: localDateFor(start.getTime()),
+      endDate: localDateFor(end.getTime()),
+      cutoff: start.getTime(),
+      endExclusive: endExclusiveDate.getTime(),
+      days,
+    };
+  }
+  const start = parseLocalDate(range.startDate);
+  const end = parseLocalDate(range.endDate);
+  const startTime = Math.min(start, end);
+  const endTime = Math.max(start, end);
+  const endExclusiveDate = new Date(endTime);
+  endExclusiveDate.setDate(endExclusiveDate.getDate() + 1);
+  const limitedStartTime = Math.max(
+    startTime,
+    endExclusiveDate.getTime() - 366 * 86400000,
+  );
+  const days = Math.min(
+    366,
+    Math.max(
+      1,
+      Math.round((endExclusiveDate.getTime() - limitedStartTime) / 86400000),
+    ),
+  );
+  return {
+    startDate: localDateFor(limitedStartTime),
+    endDate: localDateFor(endTime),
+    cutoff: limitedStartTime,
+    endExclusive: endExclusiveDate.getTime(),
+    days,
+  };
+}
+
+function parseLocalDate(value: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return startOfLocalDay(Date.now());
+  const date = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+  );
+  return startOfLocalDay(date.getTime());
 }

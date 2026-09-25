@@ -3,7 +3,8 @@ import {
   normalizePaperPetSettings,
   type PaperPetSettings,
 } from "./paperpet-settings";
-import type { CharacterPackStatus } from "../runtime";
+import type { CharacterPackStatus, PaperPetDiagnostics } from "../runtime";
+import type { InstalledCharacterPackRecord } from "../storage/paperpet-database";
 
 declare const document: Document;
 
@@ -13,17 +14,42 @@ interface PaperPetPreferenceAPI {
   saveSettings: (settings: PaperPetSettings) => Promise<PaperPetSettings>;
   openDashboard: () => Promise<void>;
   installCharacterPack: () => Promise<string | undefined>;
+  getCharacterPacks: () => Promise<InstalledCharacterPackRecord[]>;
+  enableCharacterPack: (packID: string) => Promise<void>;
+  disableCharacterPack: () => Promise<void>;
+  removeCharacterPack: (packID: string) => Promise<void>;
   getCharacterPackStatus: () => CharacterPackStatus;
   getPreviewURL: (
     mode: "idle" | "reading" | "thinking" | "annotating" | "sleeping" | "away",
   ) => string;
   resetPetPosition: () => void;
+  getDiagnostics: () => PaperPetDiagnostics;
 }
+
+const PREVIEW_MODES = [
+  "idle",
+  "reading",
+  "thinking",
+  "annotating",
+  "sleeping",
+  "away",
+] as const;
 
 const API_UNAVAILABLE = "PaperPet 设置服务暂不可用，请重启 Zotero 后重试。";
 
 function preferenceAPI(): PaperPetPreferenceAPI | undefined {
   return (Zotero as unknown as { PaperPet?: PaperPetPreferenceAPI }).PaperPet;
+}
+
+function refreshPreviewSources(api: PaperPetPreferenceAPI): void {
+  for (const mode of PREVIEW_MODES) {
+    const preview = document.getElementById(
+      `paperpet-preview-${mode}`,
+    ) as HTMLImageElement | null;
+    if (!preview) continue;
+    const url = api.getPreviewURL(mode);
+    if (preview.getAttribute("src") !== url) preview.src = url;
+  }
 }
 
 function renderCharacterPackStatus(api: PaperPetPreferenceAPI): void {
@@ -62,6 +88,118 @@ function renderCharacterPackStatus(api: PaperPetPreferenceAPI): void {
   }
 }
 
+function renderDiagnostics(api: PaperPetPreferenceAPI): void {
+  const diagnostics = api.getDiagnostics();
+  const event = document.getElementById("paperpet-diagnostic-event");
+  const eventAt = document.getElementById("paperpet-diagnostic-event-at");
+  const lookup = document.getElementById("paperpet-diagnostic-title-lookup");
+  const result = document.getElementById("paperpet-diagnostic-title-result");
+  if (event) event.textContent = diagnostics.lastEvent;
+  if (eventAt)
+    eventAt.textContent = diagnostics.lastEventAt
+      ? new Date(diagnostics.lastEventAt).toLocaleString()
+      : "无";
+  if (lookup) lookup.textContent = diagnostics.lastTitleLookup;
+  if (result) result.textContent = diagnostics.lastTitleResult;
+}
+
+async function renderCharacterPackManager(
+  api: PaperPetPreferenceAPI,
+  root: HTMLElement,
+  setStatus: (message: string) => void,
+  refreshPreview?: () => void,
+): Promise<void> {
+  const host = root.querySelector<HTMLElement>(
+    "#paperpet-character-pack-manager",
+  );
+  if (!host) return;
+  host.replaceChildren();
+  try {
+    const packs = await api.getCharacterPacks();
+    if (packs.length === 0) {
+      host.textContent = "尚未安装其他角色包";
+      return;
+    }
+    for (const pack of packs) {
+      const row = document.createElementNS(
+        "http://www.w3.org/1999/xhtml",
+        "div",
+      ) as HTMLDivElement;
+      row.className = "paperpet-pack-manager__row";
+      const label = document.createElementNS(
+        "http://www.w3.org/1999/xhtml",
+        "span",
+      );
+      label.textContent = `${pack.name} · ${pack.version}${pack.enabled ? " · 已启用" : ""}`;
+      const actions = document.createElementNS(
+        "http://www.w3.org/1999/xhtml",
+        "span",
+      );
+      actions.className = "paperpet-pack-manager__actions";
+      const toggle = document.createElementNS(
+        "http://www.w3.org/1999/xhtml",
+        "button",
+      ) as HTMLButtonElement;
+      toggle.type = "button";
+      toggle.textContent = pack.enabled ? "停用" : "启用";
+      toggle.addEventListener("click", () => {
+        toggle.disabled = true;
+        void (
+          pack.enabled
+            ? api.disableCharacterPack()
+            : api.enableCharacterPack(pack.packID)
+        )
+          .then(() => {
+            setStatus(pack.enabled ? "已停用角色包" : "已启用角色包");
+            renderCharacterPackStatus(api);
+            refreshPreview?.();
+            return renderCharacterPackManager(
+              api,
+              root,
+              setStatus,
+              refreshPreview,
+            );
+          })
+          .catch((error: unknown) => {
+            toggle.disabled = false;
+            setStatus(
+              `角色包操作失败：${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+      });
+      const remove = document.createElementNS(
+        "http://www.w3.org/1999/xhtml",
+        "button",
+      ) as HTMLButtonElement;
+      remove.type = "button";
+      remove.textContent = "删除";
+      remove.disabled = pack.enabled;
+      remove.addEventListener("click", () => {
+        if (!document.defaultView?.confirm(`删除角色包“${pack.name}”？`))
+          return;
+        remove.disabled = true;
+        void api
+          .removeCharacterPack(pack.packID)
+          .then(() => {
+            setStatus("角色包已删除");
+            return renderCharacterPackManager(api, root, setStatus);
+          })
+          .catch((error: unknown) => {
+            remove.disabled = false;
+            setStatus(
+              `删除角色包失败：${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+      });
+      actions.append(toggle, remove);
+      row.append(label, actions);
+      host.appendChild(row);
+    }
+  } catch (error) {
+    host.textContent = `无法读取角色包列表：${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
 function init(): void {
   const root = document.getElementById(
     "paperpet-preferences",
@@ -91,22 +229,13 @@ function init(): void {
   if (packSection && grid) grid.before(packSection);
   const tools = root.querySelector(".paperpet-preferences__tools");
   if (tools && packSection) packSection.appendChild(tools);
-  const previewModes = [
-    "idle",
-    "reading",
-    "thinking",
-    "annotating",
-    "sleeping",
-    "away",
-  ] as const;
   const updatePreview = (settings: PaperPetSettings): void => {
-    for (const mode of previewModes) {
+    refreshPreviewSources(api);
+    for (const mode of PREVIEW_MODES) {
       const preview = document.getElementById(
         `paperpet-preview-${mode}`,
       ) as HTMLImageElement | null;
       if (!preview) continue;
-      const url = api.getPreviewURL(mode);
-      if (preview.getAttribute("src") !== url) preview.src = url;
       const previewSize = Math.min(88, Math.max(44, settings.petSize * 0.45));
       preview.style.width = `${previewSize}px`;
       preview.style.height = `${previewSize}px`;
@@ -262,13 +391,16 @@ function init(): void {
   document
     .getElementById("paperpet-install-pack")
     ?.addEventListener("click", () => {
-      setStatus("请选择 .zpet 角色包…");
+      setStatus("请选择要添加的 .zpet 角色包…");
       void api
         .installCharacterPack()
         .then((message) => {
           if (message) {
             setStatus(message);
             renderCharacterPackStatus(api);
+            void renderCharacterPackManager(api, root, setStatus, () =>
+              updatePreview(read()),
+            );
             updatePreview(read());
           } else {
             setStatus("已取消安装");
@@ -278,6 +410,9 @@ function init(): void {
           const detail = error instanceof Error ? error.message : String(error);
           setStatus(`角色包安装失败：${detail}`);
           renderCharacterPackStatus(api);
+          void renderCharacterPackManager(api, root, setStatus, () =>
+            updatePreview(read()),
+          );
           Zotero.logError(
             error instanceof Error ? error : new Error(String(error)),
           );
@@ -286,11 +421,21 @@ function init(): void {
 
   render(api.getSettings());
   renderCharacterPackStatus(api);
+  renderDiagnostics(api);
+  void renderCharacterPackManager(api, root, setStatus, () =>
+    updatePreview(read()),
+  );
   document
     .getElementById("paperpet-reset-position")
     ?.addEventListener("click", () => {
       api.resetPetPosition();
       setStatus("宠物已回到窗口右下角");
+    });
+  document
+    .getElementById("paperpet-refresh-diagnostics")
+    ?.addEventListener("click", () => {
+      renderDiagnostics(api);
+      setStatus("诊断信息已刷新");
     });
   const preferenceSections = Array.from(
     root.querySelectorAll(
@@ -354,6 +499,8 @@ document.addEventListener(
         const api = preferenceAPI();
         if (api) {
           renderCharacterPackStatus(api);
+          renderDiagnostics(api);
+          refreshPreviewSources(api);
         }
       }
       init();

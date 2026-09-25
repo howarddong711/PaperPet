@@ -203,6 +203,43 @@
   background: color-mix(in srgb, var(--paperpet-red) 8%, transparent);
 }
 
+.paperpet-pack-manager {
+  display: flex;
+  flex-direction: column;
+  margin-top: 14px;
+  border-top: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+}
+.paperpet-pack-manager__title {
+  margin: 18px 0 0;
+  color: var(--paperpet-settings-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.paperpet-pack-manager__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  font-size: 12px;
+}
+.paperpet-pack-manager__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.paperpet-pack-manager button {
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 6px;
+  padding: 5px 9px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
 .paperpet-preferences__tools h2 {
   margin-bottom: 12px;
 }

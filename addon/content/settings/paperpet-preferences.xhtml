@@ -6,11 +6,15 @@
 >
   <html:div class="paperpet-preferences">
     <html:header class="paperpet-preferences__header">
-      <html:span class="paperpet-preferences__eyebrow">本地偏好 · 0.4.1</html:span>
+      <html:span class="paperpet-preferences__eyebrow"
+        >本地偏好 · 0.5.0</html:span
+      >
       <html:h1>PaperPet</html:h1>
       <html:p>调整陪伴阅读时的外观、交互和阅读状态识别方式。</html:p>
       <html:div class="paperpet-preferences__tool-actions">
-        <html:button id="paperpet-open-report" type="button">打开阅读报告</html:button>
+        <html:button id="paperpet-open-report" type="button"
+          >打开阅读报告</html:button
+        >
       </html:div>
     </html:header>
 
@@ -100,36 +104,38 @@
           />
           <html:span>
             <html:strong>记录阅读活动</html:strong>
-            <html:small>关闭后停止新增阅读时间和动作记录，已有记录仍然保留。</html:small>
+            <html:small
+              >关闭后停止新增阅读时间和动作记录，已有记录仍然保留。</html:small
+            >
           </html:span>
         </html:label>
         <html:details class="paperpet-advanced">
-        <html:summary>高级设置：阅读估计</html:summary>
-        <html:label class="paperpet-preference" for="paperpet-wpm">
-          <html:span>估计阅读速度</html:span>
-          <html:output id="paperpet-wpm-value">200 字/分</html:output>
-          <html:input
-            id="paperpet-wpm"
-            data-setting="personalWordsPerMinute"
-            type="range"
-            min="80"
-            max="1200"
-            step="5"
-          />
-        </html:label>
-        <html:label class="paperpet-preference" for="paperpet-default-dwell">
-          <html:span>扫描页预计阅读时间</html:span>
-          <html:output id="paperpet-default-dwell-value">60 秒</html:output>
-          <html:input
-            id="paperpet-default-dwell"
-            data-setting="defaultExpectedSeconds"
-            type="range"
-            min="15"
-            max="600"
-            step="5"
-          />
-        </html:label>
-        <html:p>用于无法识别文字的页面，帮助估计阅读时间。</html:p>
+          <html:summary>高级设置：阅读估计</html:summary>
+          <html:label class="paperpet-preference" for="paperpet-wpm">
+            <html:span>估计阅读速度</html:span>
+            <html:output id="paperpet-wpm-value">200 字/分</html:output>
+            <html:input
+              id="paperpet-wpm"
+              data-setting="personalWordsPerMinute"
+              type="range"
+              min="80"
+              max="1200"
+              step="5"
+            />
+          </html:label>
+          <html:label class="paperpet-preference" for="paperpet-default-dwell">
+            <html:span>扫描页预计阅读时间</html:span>
+            <html:output id="paperpet-default-dwell-value">60 秒</html:output>
+            <html:input
+              id="paperpet-default-dwell"
+              data-setting="defaultExpectedSeconds"
+              type="range"
+              min="15"
+              max="600"
+              step="5"
+            />
+          </html:label>
+          <html:p>用于无法识别文字的页面，帮助估计阅读时间。</html:p>
         </html:details>
         <html:label class="paperpet-preference" for="paperpet-sleep-delay">
           <html:span>暂离后进入睡眠</html:span>
@@ -178,37 +184,51 @@
       </html:div>
       <html:div class="paperpet-preferences__tool-actions">
         <html:button id="paperpet-install-pack" type="button"
-          >安装角色包…</html:button
+          >添加角色包…</html:button
         >
-        <html:button id="paperpet-reset-position" type="button">重置宠物位置</html:button>
+        <html:button id="paperpet-reset-position" type="button"
+          >重置宠物位置</html:button
+        >
       </html:div>
     </html:section>
 
     <html:section class="paperpet-preferences__pack-status">
-      <html:h2>当前角色</html:h2>
+      <html:h2>角色包</html:h2>
       <html:div class="paperpet-preview">
         <html:figure class="paperpet-preview__state">
-          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-idle" alt="待机状态预览" /></html:div>
+          <html:div class="paperpet-preview__canvas"
+            ><html:img id="paperpet-preview-idle" alt="待机状态预览"
+          /></html:div>
           <html:figcaption>待机</html:figcaption>
         </html:figure>
         <html:figure class="paperpet-preview__state">
-          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-reading" alt="阅读状态预览" /></html:div>
+          <html:div class="paperpet-preview__canvas"
+            ><html:img id="paperpet-preview-reading" alt="阅读状态预览"
+          /></html:div>
           <html:figcaption>阅读</html:figcaption>
         </html:figure>
         <html:figure class="paperpet-preview__state">
-          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-thinking" alt="思考状态预览" /></html:div>
+          <html:div class="paperpet-preview__canvas"
+            ><html:img id="paperpet-preview-thinking" alt="思考状态预览"
+          /></html:div>
           <html:figcaption>思考</html:figcaption>
         </html:figure>
         <html:figure class="paperpet-preview__state">
-          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-annotating" alt="批注状态预览" /></html:div>
+          <html:div class="paperpet-preview__canvas"
+            ><html:img id="paperpet-preview-annotating" alt="批注状态预览"
+          /></html:div>
           <html:figcaption>批注</html:figcaption>
         </html:figure>
         <html:figure class="paperpet-preview__state">
-          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-sleeping" alt="睡眠状态预览" /></html:div>
+          <html:div class="paperpet-preview__canvas"
+            ><html:img id="paperpet-preview-sleeping" alt="睡眠状态预览"
+          /></html:div>
           <html:figcaption>睡眠</html:figcaption>
         </html:figure>
         <html:figure class="paperpet-preview__state">
-          <html:div class="paperpet-preview__canvas"><html:img id="paperpet-preview-away" alt="暂离状态预览" /></html:div>
+          <html:div class="paperpet-preview__canvas"
+            ><html:img id="paperpet-preview-away" alt="暂离状态预览"
+          /></html:div>
           <html:figcaption>暂离</html:figcaption>
         </html:figure>
       </html:div>
@@ -221,28 +241,61 @@
         >
       </html:div>
       <html:details id="paperpet-pack-diagnostics" class="paperpet-advanced">
-      <html:summary>诊断详情</html:summary>
-      <html:div class="paperpet-pack-status__row">
-        <html:span>角色包路径</html:span>
-        <html:code id="paperpet-character-pack-path-value"
-          >未记录安装路径</html:code
+        <html:summary>诊断详情</html:summary>
+        <html:div class="paperpet-pack-status__row">
+          <html:span>角色包路径</html:span>
+          <html:code id="paperpet-character-pack-path-value"
+            >未记录安装路径</html:code
+          >
+        </html:div>
+        <html:div class="paperpet-pack-status__row">
+          <html:span>源 .zpet 路径</html:span>
+          <html:code id="paperpet-character-pack-archive-path-value"
+            >未记录源文件路径</html:code
+          >
+        </html:div>
+        <html:div class="paperpet-pack-status__error">
+          <html:span>错误信息</html:span>
+          <html:code id="paperpet-character-pack-error-value">无</html:code>
+        </html:div>
+      </html:details>
+      <html:h3 class="paperpet-pack-manager__title">角色包列表</html:h3>
+      <html:div
+        id="paperpet-character-pack-manager"
+        class="paperpet-pack-manager"
+        aria-live="polite"
+      ></html:div>
+      <html:details class="paperpet-advanced paperpet-diagnostics-panel">
+        <html:summary>交互诊断</html:summary>
+        <html:div class="paperpet-pack-status__row">
+          <html:span>最近事件</html:span>
+          <html:code id="paperpet-diagnostic-event">尚未记录</html:code>
+        </html:div>
+        <html:div class="paperpet-pack-status__row">
+          <html:span>事件时间</html:span>
+          <html:code id="paperpet-diagnostic-event-at">无</html:code>
+        </html:div>
+        <html:div class="paperpet-pack-status__row">
+          <html:span>标题查询</html:span>
+          <html:code id="paperpet-diagnostic-title-lookup">尚未查询</html:code>
+        </html:div>
+        <html:div class="paperpet-pack-status__row">
+          <html:span>标题结果</html:span>
+          <html:code id="paperpet-diagnostic-title-result">尚未查询</html:code>
+        </html:div>
+        <html:button id="paperpet-refresh-diagnostics" type="button"
+          >刷新诊断</html:button
         >
-      </html:div>
-      <html:div class="paperpet-pack-status__row">
-        <html:span>源 .zpet 路径</html:span>
-        <html:code id="paperpet-character-pack-archive-path-value"
-          >未记录源文件路径</html:code
-        >
-      </html:div>
-      <html:div class="paperpet-pack-status__error">
-        <html:span>错误信息</html:span>
-        <html:code id="paperpet-character-pack-error-value">无</html:code>
-      </html:div>
       </html:details>
     </html:section>
 
     <html:footer class="paperpet-preferences__footer">
-      <html:span id="paperpet-preferences-status" role="status" aria-live="polite">修改后自动保存</html:span>
+      <html:span
+        id="paperpet-preferences-status"
+        role="status"
+        aria-live="polite"
+        >修改后自动保存</html:span
+      >
       <html:button id="paperpet-preferences-reset" type="button"
         >恢复默认设置</html:button
       >

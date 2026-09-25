@@ -4,8 +4,11 @@ export interface PaperPetBackup {
   format: "paperpet-backup";
   schemaVersion: number;
   exportedAt: number;
+  scope?: BackupScope;
   data: Record<string, _ZoteroTypes.anyObj[]>;
 }
+
+export type BackupScope = "all" | "reading" | "settings";
 
 const BACKUP_TABLES = [
   "schema_migrations",
@@ -278,6 +281,26 @@ export class PaperPetDatabase {
     };
   }
 
+  public async getInstalledPacks(): Promise<InstalledCharacterPackRecord[]> {
+    const rows =
+      (await this.db.queryAsync(
+        `SELECT pack_id, version, name, author, license, install_path,
+          validation_json, enabled, installed_at
+         FROM installed_packs ORDER BY installed_at DESC, name ASC`,
+      )) ?? [];
+    return rows.map((row) => mapInstalledPack(row as Record<string, unknown>));
+  }
+
+  public async disableInstalledPacks(): Promise<void> {
+    await this.db.queryAsync("UPDATE installed_packs SET enabled = 0");
+  }
+
+  public async removeInstalledPack(packID: string): Promise<void> {
+    await this.db.queryAsync("DELETE FROM installed_packs WHERE pack_id = ?", [
+      packID,
+    ]);
+  }
+
   public async pruneSemanticEvents(
     now = Date.now(),
     retentionDays = 90,
@@ -333,42 +356,56 @@ export class PaperPetDatabase {
     });
   }
 
-  public async exportBackup(targetPath: string): Promise<void> {
+  public async exportBackup(
+    targetPath: string,
+    scope: BackupScope = "all",
+  ): Promise<void> {
     const destination = validateBackupPath(targetPath);
     await IOUtils.makeDirectory(PathUtils.parent(destination)!, {
       createAncestors: true,
       ignoreExisting: true,
     });
-    const payload = await this.exportJSON();
+    const payload = await this.exportJSON(scope);
     await IOUtils.writeUTF8(destination, JSON.stringify(payload), {
       backupFile: `${destination}.bak`,
       flush: true,
     });
   }
 
-  public async exportJSON(): Promise<PaperPetBackup> {
+  public async exportJSON(scope: BackupScope = "all"): Promise<PaperPetBackup> {
     const data = {} as PaperPetBackup["data"];
-    for (const table of BACKUP_TABLES) {
+    for (const table of tablesForScope(scope)) {
       data[table] = (await this.db.queryAsync(`SELECT * FROM ${table}`)) ?? [];
     }
     return {
       format: "paperpet-backup",
       schemaVersion: DATABASE_SCHEMA_VERSION,
       exportedAt: Date.now(),
+      scope,
       data,
     };
   }
 
-  public async importBackup(sourcePath: string): Promise<void> {
+  public async importBackup(
+    sourcePath: string,
+    requestedScope?: BackupScope,
+  ): Promise<void> {
     const source = validateBackupPath(sourcePath);
     const payload = (await IOUtils.readJSON(source)) as unknown;
     if (!isPaperPetBackup(payload)) {
       throw new Error("Invalid PaperPet backup or unsupported schema version");
     }
     await this.db.executeTransaction(async () => {
-      await this.clearAllTables(true);
+      const scope = requestedScope ?? payload.scope ?? "all";
+      await this.clearScope(scope);
       for (const [table, rows] of Object.entries(payload.data)) {
-        if (!isBackupTable(table) || table === "schema_migrations") {
+        if (
+          !isBackupTable(table) ||
+          table === "schema_migrations" ||
+          !tablesForScope(scope).includes(
+            table as (typeof BACKUP_TABLES)[number],
+          )
+        ) {
           continue;
         }
         for (const row of rows) {
@@ -485,6 +522,15 @@ export class PaperPetDatabase {
     }
   }
 
+  private async clearScope(scope: BackupScope): Promise<void> {
+    const tables = tablesForScope(scope).filter(
+      (table) => table !== "schema_migrations",
+    );
+    for (const table of tables) {
+      await this.db.queryAsync(`DELETE FROM ${table}`);
+    }
+  }
+
   public async recoverInterruptedSessions(): Promise<number> {
     const interrupted = await this.db.valueQueryAsync<number>(
       "SELECT COUNT(*) FROM reading_sessions WHERE ended_at IS NULL",
@@ -541,6 +587,40 @@ function uniqueNonEmpty(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+function mapInstalledPack(
+  values: Record<string, unknown>,
+): InstalledCharacterPackRecord {
+  return {
+    packID: String(values.pack_id),
+    version: String(values.version),
+    name: String(values.name),
+    author: String(values.author),
+    license: String(values.license),
+    installPath: String(values.install_path),
+    validationJSON: String(values.validation_json),
+    enabled: Number(values.enabled) === 1,
+    installedAt: Number(values.installed_at),
+  };
+}
+
+function tablesForScope(
+  scope: BackupScope,
+): readonly (typeof BACKUP_TABLES)[number][] {
+  if (scope === "reading") {
+    return [
+      "reading_sessions",
+      "semantic_events",
+      "daily_item_stats",
+      "item_totals",
+      "growth_ledger",
+    ];
+  }
+  if (scope === "settings") {
+    return ["installed_packs", "settings"];
+  }
+  return BACKUP_TABLES;
+}
+
 function validateBackupPath(path: string): string {
   if (
     !path ||
@@ -568,6 +648,10 @@ function isPaperPetBackup(value: unknown): value is PaperPetBackup {
     candidate.schemaVersion === DATABASE_SCHEMA_VERSION &&
     typeof candidate.data === "object" &&
     candidate.data !== null &&
+    (candidate.scope === undefined ||
+      candidate.scope === "all" ||
+      candidate.scope === "reading" ||
+      candidate.scope === "settings") &&
     Object.entries(candidate.data).every(
       ([table, rows]) =>
         isBackupTable(table) &&

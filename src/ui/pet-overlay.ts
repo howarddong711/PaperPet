@@ -23,6 +23,14 @@ export interface CharacterPackPresentation {
 
 interface PetOverlayActions {
   onInteraction: () => void;
+  onOpenDashboard: () => Promise<void>;
+  onOpenPreferences: () => void;
+  onAddCharacterPack: () => Promise<void>;
+  getCharacterPacks: () => Promise<
+    Array<{ packID: string; name: string; version: string; enabled: boolean }>
+  >;
+  onSelectCharacterPack: (packID: string) => Promise<void>;
+  onDiagnostic: (message: string) => void;
 }
 
 interface DragState {
@@ -38,6 +46,7 @@ export class PetOverlay {
   private overlay?: HTMLDivElement;
   private companion?: HTMLDivElement;
   private bubble?: HTMLDivElement;
+  private contextMenu?: HTMLDivElement;
   private characterImage?: HTMLImageElement;
   private stylesheet?: HTMLLinkElement;
   private dragState?: DragState;
@@ -125,7 +134,9 @@ export class PetOverlay {
 
     this.bubble.append(bubbleTitle, bubbleBody);
 
-    this.overlay.append(this.bubble, this.companion);
+    this.contextMenu = this.createContextMenu();
+
+    this.overlay.append(this.bubble, this.contextMenu, this.companion);
     document.documentElement?.append(this.stylesheet, this.overlay);
 
     this.companion.addEventListener("pointerdown", this.onPointerDown, true);
@@ -142,6 +153,9 @@ export class PetOverlay {
     document.addEventListener("pointermove", this.onPointerMove, true);
     document.addEventListener("pointerup", this.onPointerUp, true);
     document.addEventListener("pointercancel", this.onPointerCancel, true);
+    this.window.addEventListener("pointerdown", this.onCloseContextMenu, true);
+    this.window.addEventListener("mousedown", this.onCloseContextMenu, true);
+    this.window.addEventListener("click", this.onCloseContextMenu, true);
   }
 
   public updateSettings(settings: PaperPetSettings): void {
@@ -264,6 +278,13 @@ export class PetOverlay {
       this.onPointerCancel,
       true,
     );
+    this.window.removeEventListener(
+      "pointerdown",
+      this.onCloseContextMenu,
+      true,
+    );
+    this.window.removeEventListener("mousedown", this.onCloseContextMenu, true);
+    this.window.removeEventListener("click", this.onCloseContextMenu, true);
 
     if (this.clickTimer !== undefined) {
       this.window.clearTimeout(this.clickTimer);
@@ -277,6 +298,7 @@ export class PetOverlay {
     this.overlay = undefined;
     this.companion = undefined;
     this.bubble = undefined;
+    this.contextMenu = undefined;
     this.characterImage = undefined;
     this.stylesheet = undefined;
   }
@@ -311,6 +333,9 @@ export class PetOverlay {
       return;
     }
     const target = event.target as Node | null;
+    if (target && this.contextMenu?.contains(target)) {
+      return;
+    }
     if (target && this.companion.contains(target)) {
       return;
     }
@@ -398,10 +423,150 @@ export class PetOverlay {
   };
 
   private readonly onContextMenu = (event: MouseEvent): void => {
-    // Right-click is intentionally reserved for a future interaction model;
-    // do not let the host document open a generic context menu in the meantime.
     event.preventDefault();
+    event.stopPropagation();
+    if (!this.contextMenu || !this.overlay) return;
+    const menuWidth = 220;
+    const menuHeight = 270;
+    this.contextMenu.style.left = `${Math.max(8, Math.min(event.clientX, this.overlay.clientWidth - menuWidth - 8))}px`;
+    this.contextMenu.style.top = `${Math.max(8, Math.min(event.clientY, this.overlay.clientHeight - menuHeight - 8))}px`;
+    this.contextMenu.dataset.visible = "true";
+    this.actions.onDiagnostic("菜单打开");
   };
+
+  private readonly onCloseContextMenu = (event: MouseEvent): void => {
+    if (!this.contextMenu || this.contextMenu.dataset.visible !== "true")
+      return;
+    if (event.target instanceof Node && this.contextMenu.contains(event.target))
+      return;
+
+    const rect = this.contextMenu.getBoundingClientRect();
+    const insideMenu =
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom;
+    if (insideMenu) return;
+
+    this.contextMenu.dataset.visible = "false";
+    this.actions.onDiagnostic("菜单因点击外部关闭");
+  };
+
+  private createContextMenu(): HTMLDivElement {
+    const menu = this.createElement("div");
+    menu.className = "paperpet-context-menu";
+    menu.dataset.visible = "false";
+    menu.setAttribute("role", "menu");
+    menu.addEventListener("pointerdown", (event) => event.stopPropagation());
+    menu.addEventListener("click", (event) => event.stopPropagation());
+    menu.addEventListener("pointerleave", this.onContextMenuLeave);
+    menu.addEventListener("mouseleave", this.onContextMenuLeave);
+    const report = this.createMenuItem(
+      this.copy("打开阅读报告", "Open reading report"),
+      () => this.actions.onOpenDashboard(),
+    );
+    const switchPack = this.createPackMenuItem();
+    const addPack = this.createMenuItem(
+      this.copy("添加角色包", "Add character pack"),
+      () => this.actions.onAddCharacterPack(),
+    );
+    const settings = this.createMenuItem(
+      this.copy("打开 PaperPet 设置", "Open PaperPet settings"),
+      async () => this.actions.onOpenPreferences(),
+    );
+    menu.append(report, switchPack, addPack, settings);
+    return menu;
+  }
+
+  private readonly onContextMenuLeave = (): void => {
+    if (!this.contextMenu || this.contextMenu.dataset.visible !== "true") {
+      return;
+    }
+    this.contextMenu.dataset.visible = "false";
+    this.actions.onDiagnostic("菜单因鼠标移出关闭");
+  };
+
+  private createPackMenuItem(): HTMLDivElement {
+    const wrapper = this.createElement("div");
+    wrapper.className = "paperpet-context-menu__group";
+    const trigger = this.createElement("button");
+    trigger.type = "button";
+    trigger.className = "paperpet-context-menu__item";
+    trigger.textContent = this.copy("切换角色包", "Switch character pack");
+    const submenu = this.createElement("div");
+    submenu.className = "paperpet-context-menu__submenu";
+    submenu.hidden = true;
+    trigger.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      this.actions.onDiagnostic("点击切换角色包");
+      if (!submenu.hidden) {
+        submenu.hidden = true;
+        return;
+      }
+      submenu.replaceChildren();
+      let packs: Awaited<ReturnType<PetOverlayActions["getCharacterPacks"]>>;
+      try {
+        packs = await this.actions.getCharacterPacks();
+      } catch (error) {
+        Zotero.logError(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+        return;
+      }
+      if (packs.length === 0) {
+        const empty = this.createElement("span");
+        empty.className = "paperpet-context-menu__empty";
+        empty.textContent = this.copy(
+          "还没有添加角色包",
+          "No character packs added",
+        );
+        submenu.appendChild(empty);
+      } else {
+        for (const pack of packs) {
+          const option = this.createElement("button");
+          option.type = "button";
+          option.className = "paperpet-context-menu__item";
+          option.textContent = `${pack.name} · ${pack.version}${pack.enabled ? this.copy(" · 当前", " · Active") : ""}`;
+          option.addEventListener("click", () => {
+            submenu.hidden = true;
+            this.contextMenu!.dataset.visible = "false";
+            this.actions.onDiagnostic(`选择角色包：${pack.name}`);
+            void this.actions
+              .onSelectCharacterPack(pack.packID)
+              .catch((error) =>
+                Zotero.logError(
+                  error instanceof Error ? error : new Error(String(error)),
+                ),
+              );
+          });
+          submenu.appendChild(option);
+        }
+      }
+      submenu.hidden = false;
+    });
+    wrapper.append(trigger, submenu);
+    return wrapper;
+  }
+
+  private createMenuItem(
+    label: string,
+    action?: () => Promise<void> | void,
+    disabled = false,
+  ): HTMLButtonElement {
+    const item = this.createElement("button");
+    item.type = "button";
+    item.className = "paperpet-context-menu__item";
+    item.textContent = label;
+    item.disabled = disabled;
+    item.setAttribute("role", "menuitem");
+    item.addEventListener("click", () => {
+      this.contextMenu!.dataset.visible = "false";
+      this.actions.onDiagnostic(`点击菜单：${label}`);
+      if (action)
+        void Promise.resolve(action()).catch((error) => Zotero.logError(error));
+    });
+    return item;
+  }
 
   private registerPrimaryClick(): void {
     if (this.clickTimer !== undefined) {
@@ -504,7 +669,7 @@ export class PetOverlay {
   }
 
   private showBubble(message: string): void {
-    if (!this.bubble) {
+    if (!this.bubble || !this.companion || !this.overlay) {
       return;
     }
 
@@ -512,6 +677,21 @@ export class PetOverlay {
     if (body) {
       body.textContent = message;
     }
+    const petRect = this.companion.getBoundingClientRect();
+    const bubbleRect = this.bubble.getBoundingClientRect();
+    const left = Math.max(
+      8,
+      Math.min(petRect.left, this.overlay.clientWidth - bubbleRect.width - 8),
+    );
+    const top =
+      petRect.top - bubbleRect.height - 12 >= 8
+        ? petRect.top - bubbleRect.height - 12
+        : Math.min(
+            this.overlay.clientHeight - bubbleRect.height - 8,
+            petRect.bottom + 12,
+          );
+    this.bubble.style.left = `${left}px`;
+    this.bubble.style.top = `${Math.max(8, top)}px`;
     this.bubble.dataset.visible = "true";
 
     if (this.bubbleTimer !== undefined) {

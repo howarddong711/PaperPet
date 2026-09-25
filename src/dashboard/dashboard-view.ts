@@ -6,20 +6,24 @@ import {
 } from "./dashboard-repository";
 import type { CurrentSessionSummary } from "../sessions/reading-session-coordinator";
 import type { GrowthSnapshot } from "../growth/growth-service";
+import type { BackupScope } from "../storage/paperpet-database";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
 export interface DashboardActions {
-  onExportBackup: () => Promise<void>;
-  onImportBackup: () => Promise<void>;
-  onClearData: () => Promise<void>;
+  onExportBackup: (scope: BackupScope) => Promise<void>;
+  onImportBackup: (scope: BackupScope) => Promise<void>;
   onExcludeSession: (sessionID: string, excluded: boolean) => Promise<void>;
+  onOpenItem: (item: RecentReadingItem) => Promise<void>;
+  onResolveItemTitle: (item: RecentReadingItem) => Promise<string | undefined>;
 }
 
 export class DashboardView {
   private tabID?: string;
   private root?: HTMLDivElement;
-  private days: 7 | 30 = 7;
+  private rangeMode: "7" | "30" | "custom" = "30";
+  private customStartDate = localDateInput(Date.now() - 29 * 86400000);
+  private customEndDate = localDateInput(Date.now());
   private detailItem?: RecentReadingItem;
   private revision = 0;
 
@@ -69,7 +73,7 @@ export class DashboardView {
     let growth: GrowthSnapshot;
     try {
       [data, growth] = await Promise.all([
-        this.repository.getOverview(this.days),
+        this.repository.getOverview(this.getRange()),
         this.getGrowth(),
       ]);
     } catch (error) {
@@ -79,13 +83,15 @@ export class DashboardView {
     if (!this.root || revision !== this.revision) {
       return;
     }
+    await this.resolveItemTitles(data.recentItems);
+    if (!this.root || revision !== this.revision) return;
     this.root.replaceChildren();
 
     const header = this.createHeader(
       this.copy("最近阅读", "Recent reading"),
       this.copy(
-        `最近 ${this.days} 天 · 本地数据 · 按会话开始日期统计`,
-        `Last ${this.days} days · Local data · By session start date`,
+        `${data.startDate} 至 ${data.endDate} · 本地数据 · 按会话开始日期统计`,
+        `${data.startDate} to ${data.endDate} · Local data · By session start date`,
       ),
     );
     const range = this.createElement("select");
@@ -96,14 +102,25 @@ export class DashboardView {
       const option = this.createElement("option");
       option.value = String(days);
       option.textContent = this.copy(`近 ${days} 天`, `Last ${days} days`);
-      option.selected = days === this.days;
+      option.selected = String(days) === this.rangeMode;
       range.appendChild(option);
     }
+    const customOption = this.createElement("option");
+    customOption.value = "custom";
+    customOption.textContent = this.copy("自定义日期", "Custom dates");
+    customOption.selected = this.rangeMode === "custom";
+    range.appendChild(customOption);
     range.addEventListener("change", () => {
-      this.days = range.value === "30" ? 30 : 7;
+      if (range.value === "custom") {
+        this.rangeMode = "custom";
+        this.appendCustomRangeControls(header);
+        return;
+      }
+      this.rangeMode = range.value === "30" ? "30" : "7";
       void this.renderOverview();
     });
     header.querySelector(".paperpet-dashboard__tools")?.prepend(range);
+    if (this.rangeMode === "custom") this.appendCustomRangeControls(header);
     const current = this.getCurrentSession();
     const metrics = this.createElement("section");
     metrics.className = "paperpet-dashboard__metrics";
@@ -131,6 +148,7 @@ export class DashboardView {
       this.renderCurrentSession(current),
       this.renderReadingRatio(data),
       this.renderBehaviors(data),
+      this.renderMethodology(),
       this.renderGrowth(growth),
     );
     main.append(left, aside);
@@ -158,6 +176,7 @@ export class DashboardView {
       return;
     }
     item = detail.item;
+    item.title = (await this.actions.onResolveItemTitle(item)) || item.title;
     this.detailItem = item;
     this.root.replaceChildren();
     const header = this.createHeader(
@@ -173,6 +192,15 @@ export class DashboardView {
     back.textContent = this.copy("返回最近阅读", "Back to recent reading");
     back.addEventListener("click", () => void this.renderOverview());
     header.prepend(back);
+    const open = this.createElement("button");
+    open.type = "button";
+    open.className = "paperpet-dashboard__tool";
+    open.textContent = this.copy("继续阅读", "Continue reading");
+    open.addEventListener(
+      "click",
+      () => void this.runAction(() => this.actions.onOpenItem(item)),
+    );
+    header.querySelector(".paperpet-dashboard__tools")?.prepend(open);
 
     const metrics = this.createElement("section");
     metrics.className = "paperpet-dashboard__metrics";
@@ -222,26 +250,10 @@ export class DashboardView {
     backup.type = "button";
     backup.className = "paperpet-dashboard__tool";
     backup.textContent = this.copy("备份数据", "Backup");
+    backup.textContent = this.copy("完整备份", "Full backup");
     backup.addEventListener(
       "click",
-      () => void this.runAction(this.actions.onExportBackup),
-    );
-    const restore = this.createElement("button");
-    restore.type = "button";
-    restore.className = "paperpet-dashboard__tool";
-    restore.textContent = this.copy("导入备份", "Restore");
-    restore.addEventListener(
-      "click",
-      () => void this.runAction(this.actions.onImportBackup),
-    );
-    const clear = this.createElement("button");
-    clear.type = "button";
-    clear.className =
-      "paperpet-dashboard__tool paperpet-dashboard__tool--quiet";
-    clear.textContent = this.copy("清空记录", "Clear records");
-    clear.addEventListener(
-      "click",
-      () => void this.runAction(this.actions.onClearData),
+      () => void this.runAction(() => this.actions.onExportBackup("all")),
     );
     const management = this.createElement("details");
     management.className = "paperpet-data-menu";
@@ -249,7 +261,6 @@ export class DashboardView {
     summary.textContent = this.copy("数据管理", "Manage data");
     const menu = this.createElement("div");
     menu.className = "paperpet-data-menu__body";
-    clear.classList.add("paperpet-data-menu__danger");
     menu.append(
       this.empty(
         this.copy(
@@ -258,8 +269,26 @@ export class DashboardView {
         ),
       ),
       backup,
-      restore,
-      clear,
+      this.createDataMenuAction(
+        this.copy("备份阅读数据", "Back up reading data"),
+        () => this.actions.onExportBackup("reading"),
+      ),
+      this.createDataMenuAction(
+        this.copy("备份设置与角色包", "Back up settings and packs"),
+        () => this.actions.onExportBackup("settings"),
+      ),
+      this.createDataMenuAction(
+        this.copy("导入阅读数据", "Restore reading data"),
+        () => this.actions.onImportBackup("reading"),
+      ),
+      this.createDataMenuAction(
+        this.copy("导入设置与角色包", "Restore settings and packs"),
+        () => this.actions.onImportBackup("settings"),
+      ),
+      this.createDataMenuAction(
+        this.copy("导入完整备份", "Restore full backup"),
+        () => this.actions.onImportBackup("all"),
+      ),
     );
     management.append(summary, menu);
     tools.append(management);
@@ -274,6 +303,54 @@ export class DashboardView {
     tools.prepend(refresh);
     header.append(copy, tools);
     return header;
+  }
+
+  private createDataMenuAction(
+    label: string,
+    action: () => Promise<void>,
+  ): HTMLButtonElement {
+    const button = this.createElement("button");
+    button.type = "button";
+    button.className = "paperpet-dashboard__tool";
+    button.textContent = label;
+    button.addEventListener("click", () => void this.runAction(action));
+    return button;
+  }
+
+  private getRange(): number | { startDate: string; endDate: string } {
+    if (this.rangeMode === "30") return 30;
+    if (this.rangeMode === "custom") {
+      return { startDate: this.customStartDate, endDate: this.customEndDate };
+    }
+    return 7;
+  }
+
+  private appendCustomRangeControls(header: HTMLElement): void {
+    header.querySelector(".paperpet-custom-range")?.remove();
+    const tools = header.querySelector(".paperpet-dashboard__tools");
+    if (!tools) return;
+    const wrapper = this.createElement("span");
+    wrapper.className = "paperpet-custom-range";
+    const start = this.createElement("input");
+    start.type = "date";
+    start.value = this.customStartDate;
+    start.setAttribute("aria-label", this.copy("开始日期", "Start date"));
+    const end = this.createElement("input");
+    end.type = "date";
+    end.value = this.customEndDate;
+    end.setAttribute("aria-label", this.copy("结束日期", "End date"));
+    const apply = this.createElement("button");
+    apply.type = "button";
+    apply.className = "paperpet-dashboard__tool";
+    apply.textContent = this.copy("应用", "Apply");
+    apply.addEventListener("click", () => {
+      if (!start.value || !end.value) return;
+      this.customStartDate = start.value;
+      this.customEndDate = end.value;
+      void this.renderOverview();
+    });
+    wrapper.append(start, end, apply);
+    tools.prepend(wrapper);
   }
 
   private async runAction(action: () => Promise<void>): Promise<void> {
@@ -305,6 +382,7 @@ export class DashboardView {
       ),
     );
     section.appendChild(legend);
+    section.appendChild(this.renderCalendarHeatmap(data));
     if (!data.daily.some((point) => point.foregroundSeconds > 0)) {
       section.appendChild(
         this.empty(
@@ -363,6 +441,40 @@ export class DashboardView {
     return section;
   }
 
+  private renderCalendarHeatmap(data: ReadingOverviewData): HTMLElement {
+    const wrapper = this.createElement("div");
+    wrapper.className = "paperpet-heatmap-wrap";
+    const label = this.empty(
+      this.copy(
+        "日历热力图 · 每格代表一天",
+        "Calendar heatmap · one cell per day",
+      ),
+    );
+    wrapper.appendChild(label);
+    const heatmap = this.createElement("div");
+    heatmap.className = "paperpet-heatmap";
+    heatmap.style.gridTemplateColumns = `repeat(${Math.max(1, data.daily.length)}, 18px)`;
+    const maximum = Math.max(
+      60,
+      ...data.daily.map((point) => point.effectiveSeconds),
+    );
+    for (const point of data.daily) {
+      const cell = this.createElement("span");
+      const intensity =
+        point.effectiveSeconds > 0
+          ? Math.max(0.12, Math.min(1, point.effectiveSeconds / maximum))
+          : 0;
+      cell.className = "paperpet-heatmap__cell";
+      cell.style.setProperty("--paperpet-heat", String(intensity));
+      cell.title = `${point.date} · ${this.copy("有效阅读", "Effective reading")}: ${formatDuration(point.effectiveSeconds, Zotero.locale)}`;
+      cell.setAttribute("aria-label", cell.title);
+      cell.tabIndex = 0;
+      heatmap.appendChild(cell);
+    }
+    wrapper.appendChild(heatmap);
+    return wrapper;
+  }
+
   private renderRecentItems(data: ReadingOverviewData): HTMLElement {
     const section = this.section(
       this.copy("最近阅读的文献", "Recently read documents"),
@@ -375,16 +487,45 @@ export class DashboardView {
       );
     }
     for (const item of data.recentItems) {
-      const button = this.createElement("button");
-      button.type = "button";
-      button.className = "paperpet-paper-list__item";
+      const row = this.createElement("div");
+      row.className = "paperpet-paper-list__item";
       const title = this.createElement("strong");
-      title.textContent = item.title;
+      title.className = "paperpet-paper-list__title";
+      title.textContent =
+        item.title ||
+        this.copy(
+          `文献名称暂不可用（${item.itemKey}）`,
+          `Document name unavailable (${item.itemKey})`,
+        );
       const meta = this.createElement("span");
       meta.textContent = `${formatDuration(item.effectiveSeconds, Zotero.locale)} · ${formatDateTime(item.lastReadAt)}`;
-      button.append(title, meta);
-      button.addEventListener("click", () => void this.renderItemDetail(item));
-      list.appendChild(button);
+      const detail = this.createElement("div");
+      detail.className = "paperpet-paper-list__detail";
+      detail.setAttribute("role", "button");
+      detail.tabIndex = 0;
+      detail.setAttribute(
+        "aria-label",
+        item.title || this.copy("打开文献详情", "Open document details"),
+      );
+      detail.append(title, meta);
+      detail.addEventListener("click", () => void this.renderItemDetail(item));
+      detail.addEventListener("keydown", (event) => {
+        const keyboardEvent = event as KeyboardEvent;
+        if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+          keyboardEvent.preventDefault();
+          void this.renderItemDetail(item);
+        }
+      });
+      const open = this.createElement("button");
+      open.type = "button";
+      open.className = "paperpet-dashboard__tool paperpet-paper-list__open";
+      open.textContent = this.copy("继续阅读", "Continue");
+      open.addEventListener(
+        "click",
+        () => void this.runAction(() => this.actions.onOpenItem(item)),
+      );
+      row.append(detail, open);
+      list.appendChild(row);
     }
     section.appendChild(list);
     return section;
@@ -453,6 +594,25 @@ export class DashboardView {
     return section;
   }
 
+  private renderMethodology(): HTMLElement {
+    const section = this.section(
+      this.copy("统计说明", "How this is calculated"),
+    );
+    const details = this.createElement("details");
+    details.className = "paperpet-methodology";
+    const summary = this.createElement("summary");
+    summary.textContent = this.copy("查看计算口径", "View calculation details");
+    const body = this.createElement("div");
+    body.className = "paperpet-dashboard__prose";
+    body.textContent = this.copy(
+      "有效阅读时长由前台阅读器时间、页面文字采样和翻页/滚动等信号估算；前台时间是阅读器处于活动状态的时间。识别比例 = 有效阅读时长 ÷ 前台阅读器时间。所有统计均按会话开始日期归档，仅计算未删除且未排除的会话，不代表学习效率评分。",
+      "Effective reading is estimated from foreground reader time, visible-text samples, and page/scroll signals. Foreground time is time spent with the reader active. Recognition ratio = effective reading ÷ foreground reader time. Reports use the session start date and include only non-deleted, non-excluded sessions; this is not an efficiency score.",
+    );
+    details.append(summary, body);
+    section.appendChild(details);
+    return section;
+  }
+
   private renderBehaviors(data: ReadingOverviewData): HTMLElement {
     const section = this.section(this.copy("阅读动作", "Reading actions"));
     const maximum = Math.max(
@@ -513,6 +673,8 @@ export class DashboardView {
       effectiveSeconds: detail.item.effectiveSeconds,
       sessionCount: detail.item.sessionCount,
       paperCount: 1,
+      startDate: detail.daily[0]?.date ?? localDateInput(Date.now()),
+      endDate: detail.daily.at(-1)?.date ?? localDateInput(Date.now()),
     });
     chart.querySelector("h2")!.textContent = this.copy(
       "最近 14 个有记录的日期",
@@ -581,6 +743,21 @@ export class DashboardView {
     }
     section.appendChild(list);
     return section;
+  }
+
+  private async resolveItemTitles(items: RecentReadingItem[]): Promise<void> {
+    await Promise.all(
+      items.map(async (item) => {
+        try {
+          const title = await this.actions.onResolveItemTitle(item);
+          if (title) item.title = title;
+        } catch (error) {
+          Zotero.logError(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+        }
+      }),
+    );
   }
 
   private renderItemBehaviors(detail: ItemReadingDetail): HTMLElement {
@@ -674,6 +851,11 @@ export function formatDuration(totalSeconds: number, locale: string): string {
 function shortDate(date: string): string {
   const [, month, day] = date.split("-");
   return `${month}/${day}`;
+}
+
+function localDateInput(timestamp: number): string {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function formatDateTime(timestamp: number): string {

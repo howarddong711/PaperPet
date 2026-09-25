@@ -190,8 +190,8 @@
 
 #paperpet-bubble {
   position: absolute;
-  right: 16px;
-  bottom: 126px;
+  left: 8px;
+  top: 8px;
   width: min(250px, calc(100vw - 32px));
   box-sizing: border-box;
   padding: 12px 14px;
@@ -214,6 +214,70 @@
 #paperpet-bubble[data-visible="true"] {
   opacity: 1;
   transform: translateY(0);
+}
+
+.paperpet-context-menu {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  width: 220px;
+  padding: 6px;
+  color: var(--paperpet-ink);
+  background: var(--paperpet-paper);
+  border: 1px solid color-mix(in srgb, var(--paperpet-ink) 20%, transparent);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px var(--paperpet-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px) scale(0.98);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+.paperpet-context-menu[data-visible="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+.paperpet-context-menu__item {
+  min-height: 34px;
+  padding: 7px 10px;
+  color: inherit;
+  text-align: start;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  font: menu;
+  cursor: pointer;
+}
+.paperpet-context-menu__item:hover,
+.paperpet-context-menu__item:focus-visible {
+  color: var(--paperpet-moss);
+  background: color-mix(in srgb, var(--paperpet-moss) 12%, transparent);
+  outline: none;
+}
+.paperpet-context-menu__item:disabled {
+  padding-bottom: 9px;
+  color: color-mix(in srgb, var(--paperpet-ink) 62%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--paperpet-ink) 14%, transparent);
+  cursor: default;
+}
+.paperpet-context-menu__group {
+  display: grid;
+}
+.paperpet-context-menu__submenu {
+  display: grid;
+  margin: 0 5px 4px 12px;
+  padding-left: 5px;
+  border-left: 2px solid
+    color-mix(in srgb, var(--paperpet-moss) 26%, transparent);
+}
+.paperpet-context-menu__empty {
+  padding: 5px 10px 8px;
+  color: color-mix(in srgb, var(--paperpet-ink) 62%, transparent);
+  font: menu;
+  font-size: 12px;
 }
 
 .paperpet-bubble__title {
@@ -391,6 +455,27 @@
 .paperpet-chart-scroll {
   overflow-x: auto;
 }
+.paperpet-heatmap-wrap {
+  margin: 12px 0 18px;
+}
+.paperpet-heatmap {
+  display: grid;
+  grid-auto-rows: 18px;
+  gap: 5px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 8px 0;
+}
+.paperpet-heatmap__cell {
+  display: block;
+  background: color-mix(
+    in srgb,
+    var(--paperpet-moss) calc(var(--paperpet-heat) * 100%),
+    transparent
+  );
+  border: 1px solid color-mix(in srgb, var(--paperpet-moss) 25%, transparent);
+  border-radius: 3px;
+}
 .paperpet-session-list > [data-excluded="true"] {
   color: var(--paperpet-dashboard-muted);
   background: color-mix(in srgb, var(--paperpet-dashboard-ink) 4%, transparent);
@@ -438,6 +523,22 @@
 .paperpet-dashboard__tool--quiet {
   color: var(--paperpet-dashboard-muted);
 }
+.paperpet-custom-range {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.paperpet-custom-range input {
+  height: 36px;
+  box-sizing: border-box;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--paperpet-dashboard-line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+}
 
 .paperpet-dashboard__metrics {
   display: grid;
@@ -445,6 +546,10 @@
   margin: 26px 0 34px;
   border-top: 1px solid var(--paperpet-dashboard-line);
   border-bottom: 1px solid var(--paperpet-dashboard-line);
+}
+
+.paperpet-dashboard__metric:first-child {
+  background: color-mix(in srgb, var(--paperpet-moss) 8%, transparent);
 }
 
 .paperpet-dashboard__metric {
@@ -571,6 +676,23 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 18px;
 }
+.paperpet-paper-list__detail {
+  display: grid;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  text-align: start;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  align-content: center;
+}
+.paperpet-paper-list__open {
+  align-self: center;
+  white-space: nowrap;
+}
 
 .paperpet-paper-list__item:hover,
 .paperpet-paper-list__item:focus-visible {
@@ -578,13 +700,19 @@
   outline: none;
 }
 
-.paperpet-paper-list__item strong {
+.paperpet-paper-list__title {
   overflow: hidden;
+  display: block;
+  min-width: 0;
+  min-height: 1.4em;
+  color: var(--paperpet-dashboard-ink);
+  max-height: 2.8em;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 15px;
   font-weight: 600;
+  line-height: 1.4;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .paperpet-paper-list__item span {
@@ -703,6 +831,13 @@
   grid-template-columns: minmax(160px, 1fr) 100px 100px auto;
   gap: 12px;
   font-size: 12px;
+}
+.paperpet-methodology {
+  color: var(--paperpet-dashboard-muted);
+}
+.paperpet-methodology summary {
+  cursor: pointer;
+  color: var(--paperpet-moss);
 }
 
 .paperpet-session-list__action {

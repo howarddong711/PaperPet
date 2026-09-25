@@ -6,7 +6,10 @@ import {
   type InstalledCharacterPack,
 } from "./packs/character-pack-installer";
 import { PetOverlay } from "./ui/pet-overlay";
-import { DashboardRepository } from "./dashboard/dashboard-repository";
+import {
+  DashboardRepository,
+  type RecentReadingItem,
+} from "./dashboard/dashboard-repository";
 import { DashboardView } from "./dashboard/dashboard-view";
 import { GrowthService } from "./growth/growth-service";
 import {
@@ -14,6 +17,10 @@ import {
   PaperPetSettingsStore,
   type PaperPetSettings,
 } from "./settings/paperpet-settings";
+import type {
+  BackupScope,
+  InstalledCharacterPackRecord,
+} from "./storage/paperpet-database";
 
 export interface CharacterPackStatus {
   state: "loading" | "loaded" | "default" | "error";
@@ -22,6 +29,13 @@ export interface CharacterPackStatus {
   installPath?: string;
   archivePath?: string;
   error?: string;
+}
+
+export interface PaperPetDiagnostics {
+  lastEvent: string;
+  lastEventAt: number;
+  lastTitleLookup: string;
+  lastTitleResult: string;
 }
 
 interface WindowCompanion {
@@ -36,11 +50,16 @@ export interface PublishedPreferenceAPI {
   saveSettings: (settings: PaperPetSettings) => Promise<PaperPetSettings>;
   openDashboard: () => Promise<void>;
   installCharacterPack: () => Promise<string | undefined>;
+  getCharacterPacks: () => Promise<InstalledCharacterPackRecord[]>;
+  enableCharacterPack: (packID: string) => Promise<void>;
+  disableCharacterPack: () => Promise<void>;
+  removeCharacterPack: (packID: string) => Promise<void>;
   getCharacterPackStatus: () => CharacterPackStatus;
   getPreviewURL: (
     mode: "idle" | "reading" | "thinking" | "annotating" | "sleeping" | "away",
   ) => string;
   resetPetPosition: () => void;
+  getDiagnostics: () => PaperPetDiagnostics;
 }
 
 export class PaperPetRuntime {
@@ -53,6 +72,12 @@ export class PaperPetRuntime {
   private readonly settingsStore = new PaperPetSettingsStore(this.database);
   private settings: PaperPetSettings = { ...DEFAULT_PAPERPET_SETTINGS };
   private characterPackStatus: CharacterPackStatus = { state: "loading" };
+  private diagnostics: PaperPetDiagnostics = {
+    lastEvent: "尚未记录",
+    lastEventAt: 0,
+    lastTitleLookup: "尚未查询",
+    lastTitleResult: "尚未查询",
+  };
 
   private readonly companions = new Map<
     _ZoteroTypes.MainWindow,
@@ -97,48 +122,74 @@ export class PaperPetRuntime {
       () => this.sessions.getCurrentSession(),
       () => this.growth.getSnapshot(),
       {
-        onExportBackup: async () => {
-          const destination = await this.chooseBackupPath(window);
+        onExportBackup: async (scope) => {
+          const destination = await this.chooseBackupPath(window, scope);
           if (destination) {
-            await this.database.exportBackup(destination);
+            await this.database.exportBackup(destination, scope);
           }
         },
-        onImportBackup: async () => {
-          const source = await this.chooseBackupSource(window);
+        onImportBackup: async (scope) => {
+          const source = await this.chooseBackupSource(window, scope);
           if (source) {
             const confirmed = Services.prompt.confirm(
               window as unknown as mozIDOMWindowProxy,
               "PaperPet",
               Zotero.locale.startsWith("zh")
-                ? "导入备份将替换全部 PaperPet 本地记录与设置。建议先备份当前数据。继续导入？"
-                : "Importing replaces all local PaperPet records and settings. Back up your current data first. Continue?",
+                ? scope === "all"
+                  ? "导入完整备份将替换全部 PaperPet 本地记录、设置与角色包。建议先备份当前数据。继续导入？"
+                  : scope === "reading"
+                    ? "导入阅读数据将替换当前阅读记录，但不会修改设置和角色包。继续导入？"
+                    : "导入设置与角色包将替换当前设置和角色包，但不会修改阅读记录。继续导入？"
+                : scope === "all"
+                  ? "Importing a full backup replaces all PaperPet records, settings, and packs. Continue?"
+                  : scope === "reading"
+                    ? "Importing reading data replaces current reading records only. Continue?"
+                    : "Importing settings and packs replaces current settings and packs only. Continue?",
             );
             if (!confirmed) return;
-            await this.sessions.discardActiveSession();
-            await this.database.importBackup(source);
-            this.applySettings(await this.settingsStore.load());
-          }
-        },
-        onClearData: async () => {
-          const confirmed = Services.prompt.confirm(
-            window as unknown as mozIDOMWindowProxy,
-            "PaperPet",
-            Zotero.locale.startsWith("zh")
-              ? "清空 PaperPet 的本地阅读记录？此操作不会删除 Zotero 文献。"
-              : "Clear PaperPet's local reading records? Zotero items will not be deleted.",
-          );
-          if (confirmed) {
-            await this.sessions.clearData();
+            if (scope === "all" || scope === "reading") {
+              await this.sessions.discardActiveSession();
+            }
+            await this.database.importBackup(source, scope);
+            if (scope === "all" || scope === "settings") {
+              this.applySettings(await this.settingsStore.load());
+              const installer = new CharacterPackInstaller(
+                this.database,
+                window,
+              );
+              const pack = await installer.loadEnabled();
+              this.applyCharacterPack(pack);
+            }
           }
         },
         onExcludeSession: (sessionID, excluded) =>
           this.database.excludeSession(sessionID, excluded),
+        onOpenItem: async (item) => {
+          const attachment = await Zotero.Items.getByLibraryAndKeyAsync(
+            item.libraryID,
+            item.attachmentKey,
+          );
+          if (!attachment)
+            throw new Error("The Zotero attachment could not be found");
+          await Zotero.FileHandlers.open(attachment);
+        },
+        onResolveItemTitle: (item) => this.resolveItemTitle(item),
       },
     );
     const overlay = new PetOverlay(window, this.rootURI, {
       onInteraction: () => {
         controller.recordPetInteraction();
       },
+      onOpenDashboard: () => dashboard.open(),
+      onOpenPreferences: () => {
+        Zotero.Utilities.Internal.openPreferences("paperpet");
+      },
+      onAddCharacterPack: async () => {
+        await this.installCharacterPack();
+      },
+      getCharacterPacks: () => this.getCharacterPacks(),
+      onSelectCharacterPack: (packID) => this.enableCharacterPack(packID),
+      onDiagnostic: (message) => this.recordDiagnostic(message),
     });
     const controller = new ReaderActivityController(
       window,
@@ -225,7 +276,7 @@ export class PaperPetRuntime {
     Zotero.debug(`[PaperPet] ${message}`);
   }
 
-  private applyCharacterPack(pack: InstalledCharacterPack): void {
+  private applyCharacterPack(pack?: InstalledCharacterPack): void {
     for (const { overlay } of this.companions.values()) {
       overlay.setCharacterPack(pack);
     }
@@ -254,6 +305,10 @@ export class PaperPetRuntime {
       },
       openDashboard: () => this.openDashboard(),
       installCharacterPack: () => this.installCharacterPack(),
+      getCharacterPacks: () => this.getCharacterPacks(),
+      enableCharacterPack: (packID) => this.enableCharacterPack(packID),
+      disableCharacterPack: () => this.disableCharacterPack(),
+      removeCharacterPack: (packID) => this.removeCharacterPack(packID),
       getCharacterPackStatus: () => ({ ...this.characterPackStatus }),
       getPreviewURL: (mode) =>
         this.companions.values().next().value?.overlay.getPreviewURL(mode) ??
@@ -262,6 +317,7 @@ export class PaperPetRuntime {
         for (const { overlay } of this.companions.values())
           overlay.resetPosition();
       },
+      getDiagnostics: () => ({ ...this.diagnostics }),
     };
     (Zotero as unknown as { PaperPet?: PublishedPreferenceAPI }).PaperPet =
       preferenceAPI;
@@ -325,6 +381,102 @@ export class PaperPetRuntime {
     }
   }
 
+  private async getCharacterPacks(): Promise<InstalledCharacterPackRecord[]> {
+    const window = this.companions.keys().next().value as
+      _ZoteroTypes.MainWindow | undefined;
+    if (!window) throw new Error("PaperPet is not attached to a Zotero window");
+    return new CharacterPackInstaller(this.database, window).listInstalled();
+  }
+
+  private async resolveItemTitle(
+    item: RecentReadingItem,
+  ): Promise<string | undefined> {
+    this.diagnostics.lastTitleLookup = `${item.libraryID}/${item.itemKey} · attachment ${item.attachmentKey}`;
+    this.recordDiagnostic("开始查询文献标题");
+    for (const key of [item.itemKey, item.attachmentKey]) {
+      let candidate: Zotero.Item | false;
+      try {
+        candidate = await Zotero.Items.getByLibraryAndKeyAsync(
+          item.libraryID,
+          key,
+        );
+      } catch {
+        candidate = false;
+      }
+      if (!candidate) {
+        candidate = Zotero.Items.getByLibraryAndKey(item.libraryID, key);
+      }
+      if (!candidate) continue;
+      let parent: Zotero.Item | false = false;
+      if (candidate.parentItemID) {
+        try {
+          parent = await Zotero.Items.getAsync(candidate.parentItemID);
+        } catch {
+          parent = Zotero.Items.get(candidate.parentItemID);
+        }
+      }
+      for (const source of [parent, candidate]) {
+        if (!source) continue;
+        const title = String(source.getField("title") || "").trim();
+        if (title) {
+          this.diagnostics.lastTitleResult = `${title}（${key === item.itemKey ? "条目" : "附件/父条目"}）`;
+          this.recordDiagnostic("文献标题查询成功");
+          return title;
+        }
+      }
+    }
+    this.diagnostics.lastTitleResult = "未找到标题";
+    this.recordDiagnostic("文献标题查询为空");
+    return undefined;
+  }
+
+  private recordDiagnostic(message: string): void {
+    this.diagnostics.lastEvent = message;
+    this.diagnostics.lastEventAt = Date.now();
+  }
+
+  private async enableCharacterPack(packID: string): Promise<void> {
+    const window = this.companions.keys().next().value as
+      _ZoteroTypes.MainWindow | undefined;
+    if (!window) throw new Error("PaperPet is not attached to a Zotero window");
+    const pack = await new CharacterPackInstaller(this.database, window).enable(
+      packID,
+    );
+    this.applyCharacterPack(pack);
+    this.characterPackStatus = {
+      state: "loaded",
+      name: pack.manifest.name,
+      version: pack.manifest.version,
+      installPath: pack.installPath,
+      archivePath: new CharacterPackInstaller(
+        this.database,
+        window,
+      ).getRememberedArchivePath(),
+    };
+  }
+
+  private async disableCharacterPack(): Promise<void> {
+    const window = this.companions.keys().next().value as
+      _ZoteroTypes.MainWindow | undefined;
+    if (!window) throw new Error("PaperPet is not attached to a Zotero window");
+    await new CharacterPackInstaller(this.database, window).disable();
+    this.applyCharacterPack(undefined);
+    this.characterPackStatus = { state: "default" };
+  }
+
+  private async removeCharacterPack(packID: string): Promise<void> {
+    const window = this.companions.keys().next().value as
+      _ZoteroTypes.MainWindow | undefined;
+    if (!window) throw new Error("PaperPet is not attached to a Zotero window");
+    const installer = new CharacterPackInstaller(this.database, window);
+    const current = await this.database.getEnabledPack();
+    await installer.remove(packID);
+    if (current?.packID === packID) {
+      this.applyCharacterPack(undefined);
+      this.characterPackStatus = { state: "default" };
+    }
+  }
+
   private chooseCharacterPack(
     window: _ZoteroTypes.MainWindow,
   ): Promise<string | undefined> {
@@ -355,6 +507,7 @@ export class PaperPetRuntime {
 
   private chooseBackupPath(
     window: _ZoteroTypes.MainWindow,
+    scope: BackupScope = "all",
   ): Promise<string | undefined> {
     const picker = Cc["@mozilla.org/filepicker;1"].createInstance(
       Ci.nsIFilePicker,
@@ -362,13 +515,21 @@ export class PaperPetRuntime {
     picker.init(
       window.browsingContext,
       Zotero.locale.startsWith("zh")
-        ? "备份 PaperPet 阅读记录"
-        : "Back up PaperPet data",
+        ? scope === "reading"
+          ? "备份 PaperPet 阅读数据"
+          : scope === "settings"
+            ? "备份 PaperPet 设置与角色包"
+            : "备份 PaperPet 全部数据"
+        : scope === "reading"
+          ? "Back up PaperPet reading data"
+          : scope === "settings"
+            ? "Back up PaperPet settings and packs"
+            : "Back up all PaperPet data",
       Ci.nsIFilePicker.modeSave,
     );
     picker.appendFilter("PaperPet backup (*.json)", "*.json");
     picker.defaultExtension = "json";
-    picker.defaultString = "paperpet-backup.json";
+    picker.defaultString = `paperpet-${scope}-backup.json`;
     return new Promise((resolve) => {
       picker.open({
         done: (result) => {
@@ -384,6 +545,7 @@ export class PaperPetRuntime {
 
   private chooseBackupSource(
     window: _ZoteroTypes.MainWindow,
+    scope: BackupScope = "all",
   ): Promise<string | undefined> {
     const picker = Cc["@mozilla.org/filepicker;1"].createInstance(
       Ci.nsIFilePicker,
@@ -391,8 +553,16 @@ export class PaperPetRuntime {
     picker.init(
       window.browsingContext,
       Zotero.locale.startsWith("zh")
-        ? "导入 PaperPet 阅读记录"
-        : "Restore PaperPet data",
+        ? scope === "reading"
+          ? "导入 PaperPet 阅读数据"
+          : scope === "settings"
+            ? "导入 PaperPet 设置与角色包"
+            : "导入 PaperPet 全部数据"
+        : scope === "reading"
+          ? "Restore PaperPet reading data"
+          : scope === "settings"
+            ? "Restore PaperPet settings and packs"
+            : "Restore all PaperPet data",
       Ci.nsIFilePicker.modeOpen,
     );
     picker.appendFilter("PaperPet backup (*.json)", "*.json");
