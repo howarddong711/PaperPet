@@ -4,6 +4,7 @@ export type ReadingSignal =
   | "keyboard-navigation"
   | "selection"
   | "annotation"
+  | "note-edit"
   | "search"
   | "zoom"
   | "content-click"
@@ -40,6 +41,8 @@ export interface ReadingActivitySnapshot {
   foregroundDeltaSeconds: number;
   effectiveReadingSeconds: number;
   effectiveDeltaSeconds: number;
+  noteEditingSeconds: number;
+  noteEditingDeltaSeconds: number;
   expectedReadingSeconds: number;
 }
 
@@ -63,12 +66,14 @@ const STRONG_SIGNALS = new Set<ReadingSignal>([
   "keyboard-navigation",
   "selection",
   "annotation",
+  "note-edit",
   "search",
   "zoom",
   "content-click",
 ]);
 
 const ANNOTATING_ACTION_DURATION_MS = 3_000;
+export const NOTE_EDITING_IDLE_SECONDS = 15;
 
 const NAVIGATION_SIGNALS = new Set<ReadingSignal>([
   "scroll",
@@ -86,7 +91,7 @@ export function calculateForegroundGate(input: ForegroundGateInput): boolean {
     input.appFocused &&
     !input.windowMinimized &&
     input.documentVisible &&
-    input.activeTabType === "reader" &&
+    (input.activeTabType === "reader" || input.activeTabType === "note") &&
     input.readerReady
   );
 }
@@ -117,6 +122,8 @@ export class ReadingActivityModel {
   private expectedReadingSeconds: number;
   private foregroundReaderSeconds = 0;
   private effectiveReadingSeconds = 0;
+  private noteEditingSeconds = 0;
+  private readonly noteEditingWindows: { start: number; end: number }[] = [];
 
   public constructor(options: Partial<ReadingActivityModelOptions> = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
@@ -128,6 +135,18 @@ export class ReadingActivityModel {
     if (this.lastStrongAt === undefined) {
       this.expectedReadingSeconds = this.options.defaultExpectedSeconds;
     }
+  }
+
+  /** Keep totals, but do not carry a PDF/note's confidence into another item. */
+  public resetActivity(now: number): void {
+    this.recentSignals.length = 0;
+    this.lastStrongAt = undefined;
+    this.lastWeakAt = undefined;
+    this.lastAnnotatingAt = undefined;
+    this.noteEditingWindows.length = 0;
+    this.expectedReadingSeconds = this.options.defaultExpectedSeconds;
+    this.lastTickAt = now;
+    this.gateChangedAt = now;
   }
 
   public recordSignal(
@@ -149,8 +168,17 @@ export class ReadingActivityModel {
       this.lastWeakAt = at;
     }
 
-    if (type === "annotation" || type === "selection") {
+    if (type === "annotation" || type === "selection" || type === "note-edit") {
       this.lastAnnotatingAt = at;
+    }
+    if (type === "note-edit") {
+      const end = at + NOTE_EDITING_IDLE_SECONDS * 1_000;
+      const previous = this.noteEditingWindows.at(-1);
+      if (previous && at <= previous.end) {
+        previous.end = Math.max(previous.end, end);
+      } else {
+        this.noteEditingWindows.push({ start: at, end });
+      }
     }
   }
 
@@ -174,6 +202,36 @@ export class ReadingActivityModel {
     const effectiveDeltaSeconds = elapsedSeconds * confidence;
     this.effectiveReadingSeconds += effectiveDeltaSeconds;
 
+    // Only the overlap after a real edit counts, never the reading time before
+    // the first input. Keep disjoint windows until sampled so a new edit cannot
+    // erase the tail of a previous window between two ticks.
+    const tickStart = now - elapsedSeconds * 1_000;
+    const editingSeconds = gateOpen
+      ? this.noteEditingWindows.reduce(
+          (sum, window) =>
+            sum +
+            Math.max(
+              0,
+              Math.min(now, window.end) - Math.max(tickStart, window.start),
+            ) /
+              1_000,
+          0,
+        )
+      : 0;
+    const noteEditingDeltaSeconds = Math.min(
+      effectiveDeltaSeconds,
+      editingSeconds * confidence,
+    );
+    this.noteEditingSeconds += noteEditingDeltaSeconds;
+    if (!gateOpen) {
+      // Returning to the editor must require a new edit, not resume old input.
+      this.noteEditingWindows.length = 0;
+    } else {
+      while (this.noteEditingWindows[0]?.end <= now) {
+        this.noteEditingWindows.shift();
+      }
+    }
+
     return {
       mode: this.calculateMode(gateOpen, confidence, now),
       confidence,
@@ -181,6 +239,8 @@ export class ReadingActivityModel {
       foregroundDeltaSeconds: gateOpen ? elapsedSeconds : 0,
       effectiveReadingSeconds: this.effectiveReadingSeconds,
       effectiveDeltaSeconds,
+      noteEditingSeconds: this.noteEditingSeconds,
+      noteEditingDeltaSeconds,
       expectedReadingSeconds: this.expectedReadingSeconds,
     };
   }

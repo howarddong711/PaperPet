@@ -1,4 +1,4 @@
-const DATABASE_SCHEMA_VERSION = 1;
+const DATABASE_SCHEMA_VERSION = 2;
 
 export interface PaperPetBackup {
   format: "paperpet-backup";
@@ -113,6 +113,12 @@ const MIGRATION_1 = [
     value_json TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
+] as const;
+
+const MIGRATION_2 = [
+  "ALTER TABLE reading_sessions ADD COLUMN note_editing_seconds REAL NOT NULL DEFAULT 0",
+  "ALTER TABLE daily_item_stats ADD COLUMN note_editing_seconds REAL NOT NULL DEFAULT 0",
+  "ALTER TABLE item_totals ADD COLUMN note_editing_seconds REAL NOT NULL DEFAULT 0",
 ] as const;
 
 export interface DatabaseLocation {
@@ -450,13 +456,14 @@ export class PaperPetDatabase {
       await this.db.queryAsync(
         `INSERT INTO daily_item_stats (
           local_date, timezone, library_id, item_key, attachment_key,
-          foreground_seconds, effective_seconds, session_count, annotation_count,
+          foreground_seconds, effective_seconds, note_editing_seconds, session_count, annotation_count,
           selection_count, search_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
         ON CONFLICT(local_date, timezone, library_id, item_key, attachment_key)
         DO UPDATE SET
           foreground_seconds = foreground_seconds + excluded.foreground_seconds,
           effective_seconds = effective_seconds + excluded.effective_seconds,
+          note_editing_seconds = note_editing_seconds + excluded.note_editing_seconds,
           session_count = session_count + excluded.session_count,
           annotation_count = annotation_count + excluded.annotation_count,
           selection_count = selection_count + excluded.selection_count,
@@ -469,6 +476,7 @@ export class PaperPetDatabase {
           String(values.attachment_key),
           Number(values.foreground_seconds),
           Number(values.effective_seconds),
+          Number(values.note_editing_seconds ?? 0),
           Number(values.annotation_count),
           Number(selectionCount ?? 0),
           Number(searchCount ?? 0),
@@ -477,12 +485,13 @@ export class PaperPetDatabase {
       await this.db.queryAsync(
         `INSERT INTO item_totals (
           library_id, item_key, attachment_key, title_snapshot,
-          foreground_seconds, effective_seconds, session_count,
+          foreground_seconds, effective_seconds, note_editing_seconds, session_count,
           annotation_count, selection_count, search_count, first_read_at, last_read_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
         ON CONFLICT(library_id, item_key, attachment_key) DO UPDATE SET
           foreground_seconds = foreground_seconds + excluded.foreground_seconds,
           effective_seconds = effective_seconds + excluded.effective_seconds,
+          note_editing_seconds = note_editing_seconds + excluded.note_editing_seconds,
           session_count = session_count + excluded.session_count,
           annotation_count = annotation_count + excluded.annotation_count,
           selection_count = selection_count + excluded.selection_count,
@@ -496,6 +505,7 @@ export class PaperPetDatabase {
           String(values.title_snapshot ?? ""),
           Number(values.foreground_seconds),
           Number(values.effective_seconds),
+          Number(values.note_editing_seconds ?? 0),
           Number(values.annotation_count),
           Number(selectionCount ?? 0),
           Number(searchCount ?? 0),
@@ -563,19 +573,18 @@ export class PaperPetDatabase {
         `PaperPet database schema ${currentVersion} is newer than supported schema ${DATABASE_SCHEMA_VERSION}`,
       );
     }
-    if (currentVersion >= 1) {
-      return;
+    const migrations = [MIGRATION_1.slice(1), MIGRATION_2];
+    for (let index = currentVersion; index < migrations.length; index += 1) {
+      await connection.executeTransaction(async () => {
+        for (const statement of migrations[index]) {
+          await connection.queryAsync(statement);
+        }
+        await connection.queryAsync(
+          "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+          [index + 1, Date.now()],
+        );
+      });
     }
-
-    await connection.executeTransaction(async () => {
-      for (const statement of MIGRATION_1.slice(1)) {
-        await connection.queryAsync(statement);
-      }
-      await connection.queryAsync(
-        "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
-        [1, Date.now()],
-      );
-    });
   }
 }
 
@@ -645,7 +654,9 @@ function isPaperPetBackup(value: unknown): value is PaperPetBackup {
   const candidate = value as Partial<PaperPetBackup>;
   return (
     candidate.format === "paperpet-backup" &&
-    candidate.schemaVersion === DATABASE_SCHEMA_VERSION &&
+    Number.isInteger(candidate.schemaVersion) &&
+    Number(candidate.schemaVersion) >= 1 &&
+    Number(candidate.schemaVersion) <= DATABASE_SCHEMA_VERSION &&
     typeof candidate.data === "object" &&
     candidate.data !== null &&
     (candidate.scope === undefined ||

@@ -29,6 +29,25 @@ describe("calculateForegroundGate", () => {
       );
     }
   });
+
+  it("accepts a resolved note editor, but never a bare library or report", () => {
+    expect(
+      calculateForegroundGate({ ...activeReader, activeTabType: "note" }),
+    ).toBe(true);
+    expect(
+      calculateForegroundGate({
+        ...activeReader,
+        activeTabType: "note",
+        readerReady: false,
+      }),
+    ).toBe(false);
+    expect(
+      calculateForegroundGate({
+        ...activeReader,
+        activeTabType: "paperpet-dashboard",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("calculateExpectedReadingSeconds", () => {
@@ -119,6 +138,141 @@ describe("ReadingActivityModel", () => {
     expect(model.tick(true, 1_000).mode).toBe("annotating");
     expect(model.tick(true, 3_000).mode).toBe("annotating");
     expect(model.tick(true, 3_001).mode).not.toBe("annotating");
+  });
+
+  it("treats note edits as strong annotating activity and stops on focus loss", () => {
+    const model = new ReadingActivityModel();
+    model.recordSignal("note-edit", 0);
+    model.tick(true, 0);
+    expect(model.tick(true, 1_000)).toMatchObject({
+      mode: "annotating",
+      confidence: 1,
+      effectiveDeltaSeconds: 1,
+    });
+    expect(model.tick(false, 2_000)).toMatchObject({
+      mode: "away",
+      effectiveDeltaSeconds: 0,
+      foregroundDeltaSeconds: 0,
+    });
+  });
+
+  it("does not carry confidence or annotating state between a paper and a note", () => {
+    const model = new ReadingActivityModel();
+    model.recordSignal("annotation", 0);
+    model.tick(true, 0);
+    const previous = model.tick(true, 1_000);
+    model.resetActivity(1_000);
+    const next = model.tick(true, 2_000);
+    expect(next.mode).not.toBe("annotating");
+    expect(next.confidence).toBe(0);
+    expect(next.effectiveReadingSeconds).toBe(previous.effectiveReadingSeconds);
+  });
+
+  it("never labels reading, selecting or annotating a PDF as note editing", () => {
+    const model = new ReadingActivityModel();
+    model.tick(true, 0);
+    for (const [index, type] of (
+      ["content-click", "scroll", "selection", "annotation", "search"] as const
+    ).entries()) {
+      const now = (index + 1) * 1_000;
+      model.recordSignal(type, now);
+      expect(model.tick(true, now).noteEditingDeltaSeconds).toBe(0);
+    }
+    const snapshot = model.tick(true, 6_000);
+    expect(snapshot.effectiveReadingSeconds).toBeGreaterThan(0);
+    expect(snapshot.noteEditingSeconds).toBe(0);
+  });
+
+  it("starts editing at actual input without backdating the previous reading tick", () => {
+    const model = new ReadingActivityModel();
+    model.recordSignal("content-click", 0);
+    model.tick(true, 0);
+    model.tick(true, 1_000);
+    model.recordSignal("note-edit", 1_750);
+    expect(model.tick(true, 1_750).noteEditingSeconds).toBe(0);
+    const next = model.tick(true, 2_000);
+    expect(next.noteEditingDeltaSeconds).toBe(0.25);
+    expect(next.noteEditingSeconds).toBe(0.25);
+    expect(next.noteEditingSeconds).toBeLessThan(next.effectiveReadingSeconds);
+  });
+
+  it("extends continuous editing without multiplying time by input count", () => {
+    const model = new ReadingActivityModel();
+    model.recordSignal("note-edit", 0);
+    model.tick(true, 0);
+    for (let now = 250; now <= 30_000; now += 250) {
+      model.recordSignal("note-edit", now);
+      const snapshot = model.tick(true, now);
+      expect(snapshot.noteEditingDeltaSeconds).toBe(0.25);
+      expect(snapshot.noteEditingDeltaSeconds).toBeLessThanOrEqual(
+        snapshot.effectiveDeltaSeconds,
+      );
+    }
+    expect(model.tick(true, 30_000).noteEditingSeconds).toBe(30);
+  });
+
+  it("clips the final idle tick to 15 seconds and stops until another edit", () => {
+    const model = new ReadingActivityModel();
+    model.recordSignal("note-edit", 0);
+    model.tick(true, 0);
+    model.tick(true, 14_500);
+    const last = model.tick(true, 15_500);
+    expect(last.noteEditingDeltaSeconds).toBeCloseTo(0.5 * last.confidence);
+    model.recordSignal("scroll", 16_000);
+    const reading = model.tick(true, 16_000);
+    expect(reading.effectiveDeltaSeconds).toBeGreaterThan(0);
+    expect(reading.noteEditingDeltaSeconds).toBe(0);
+    expect(reading.noteEditingSeconds).toBe(last.noteEditingSeconds);
+  });
+
+  it("preserves the previous editing tail when an expired window is renewed between ticks", () => {
+    const model = new ReadingActivityModel();
+    model.recordSignal("note-edit", 0);
+    model.tick(true, 0);
+    model.tick(true, 14_800);
+    model.recordSignal("note-edit", 15_300);
+    expect(model.tick(true, 15_300).noteEditingDeltaSeconds).toBeCloseTo(0.2);
+    expect(model.tick(true, 15_800).noteEditingDeltaSeconds).toBe(0.5);
+  });
+
+  it("pauses on focus loss and requires a fresh edit after returning", () => {
+    const model = new ReadingActivityModel();
+    model.recordSignal("note-edit", 0);
+    model.tick(true, 0);
+    const active = model.tick(true, 1_000);
+    expect(model.tick(false, 2_000).noteEditingDeltaSeconds).toBe(0);
+    const returned = model.tick(true, 3_000);
+    expect(returned.noteEditingDeltaSeconds).toBe(0);
+    expect(returned.noteEditingSeconds).toBe(active.noteEditingSeconds);
+    model.recordSignal("note-edit", 3_500);
+    expect(model.tick(true, 3_500).noteEditingDeltaSeconds).toBe(0);
+    expect(model.tick(true, 4_000).noteEditingDeltaSeconds).toBe(0.5);
+  });
+
+  it("keeps editing totals but clears the editing window on a source switch", () => {
+    const model = new ReadingActivityModel();
+    model.recordSignal("note-edit", 0);
+    model.tick(true, 0);
+    model.tick(true, 1_000);
+    model.resetActivity(1_000);
+    model.recordSignal("page-change", 1_000);
+    const pdf = model.tick(true, 2_000);
+    expect(pdf.effectiveDeltaSeconds).toBe(1);
+    expect(pdf.noteEditingDeltaSeconds).toBe(0);
+    expect(pdf.noteEditingSeconds).toBe(1);
+  });
+
+  it("never backfills a suspended timer as editing time", () => {
+    const model = new ReadingActivityModel();
+    model.recordSignal("note-edit", 0);
+    model.tick(true, 0);
+    expect(model.tick(true, 60_000).noteEditingDeltaSeconds).toBe(0);
+    model.recordSignal("note-edit", 60_000);
+    const resumed = model.tick(true, 64_000);
+    expect(resumed.noteEditingDeltaSeconds).toBe(1.5);
+    expect(resumed.noteEditingDeltaSeconds).toBeLessThanOrEqual(
+      resumed.effectiveDeltaSeconds,
+    );
   });
 
   it("moves from away to sleeping without adding time", () => {

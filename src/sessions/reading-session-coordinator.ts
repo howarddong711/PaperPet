@@ -5,7 +5,7 @@ import type {
 } from "../tracking/reader-activity-controller";
 import { createUUID, PaperPetDatabase } from "../storage/paperpet-database";
 
-const MODEL_VERSION = 1;
+const MODEL_VERSION = 2;
 const FLUSH_INTERVAL_MS = 15_000;
 const SESSION_AWAY_SPLIT_MS = 10 * 60 * 1_000;
 const EVENT_MERGE_WINDOW_MS = 2_000;
@@ -24,6 +24,7 @@ interface DailyDelta {
   timezone: string;
   foregroundSeconds: number;
   effectiveSeconds: number;
+  noteEditingSeconds: number;
   annotationCount: number;
   selectionCount: number;
   searchCount: number;
@@ -39,9 +40,11 @@ interface ActiveSession {
   timezone: string;
   foregroundSeconds: number;
   effectiveSeconds: number;
+  noteEditingSeconds: number;
   annotationCount: number;
   pendingForegroundSeconds: number;
   pendingEffectiveSeconds: number;
+  pendingNoteEditingSeconds: number;
   pendingAnnotationCount: number;
   pendingItemSessionCount: number;
   pendingEvents: PendingEvent[];
@@ -54,6 +57,7 @@ export interface CurrentSessionSummary {
   startedAt: number;
   foregroundSeconds: number;
   effectiveSeconds: number;
+  noteEditingSeconds: number;
   annotationCount: number;
 }
 
@@ -93,13 +97,16 @@ export class ReadingSessionCoordinator {
     active.lastReaderAt = observedAt;
     active.foregroundSeconds += snapshot.foregroundDeltaSeconds;
     active.effectiveSeconds += snapshot.effectiveDeltaSeconds;
+    active.noteEditingSeconds += snapshot.noteEditingDeltaSeconds;
     active.pendingForegroundSeconds += snapshot.foregroundDeltaSeconds;
     active.pendingEffectiveSeconds += snapshot.effectiveDeltaSeconds;
+    active.pendingNoteEditingSeconds += snapshot.noteEditingDeltaSeconds;
     this.addDailyTime(
       active,
       observedAt,
       snapshot.foregroundDeltaSeconds,
       snapshot.effectiveDeltaSeconds,
+      snapshot.noteEditingDeltaSeconds,
     );
 
     if (observedAt - active.lastFlushAt >= FLUSH_INTERVAL_MS) {
@@ -154,6 +161,7 @@ export class ReadingSessionCoordinator {
       startedAt: active.startedAt,
       foregroundSeconds: active.foregroundSeconds,
       effectiveSeconds: active.effectiveSeconds,
+      noteEditingSeconds: active.noteEditingSeconds,
       annotationCount: active.annotationCount,
     };
   }
@@ -188,9 +196,11 @@ export class ReadingSessionCoordinator {
       timezone,
       foregroundSeconds: 0,
       effectiveSeconds: 0,
+      noteEditingSeconds: 0,
       annotationCount: 0,
       pendingForegroundSeconds: 0,
       pendingEffectiveSeconds: 0,
+      pendingNoteEditingSeconds: 0,
       pendingAnnotationCount: 0,
       pendingItemSessionCount: 1,
       pendingEvents: [],
@@ -236,6 +246,7 @@ export class ReadingSessionCoordinator {
   ): void {
     const foregroundDelta = session.pendingForegroundSeconds;
     const effectiveDelta = session.pendingEffectiveSeconds;
+    const noteEditingDelta = session.pendingNoteEditingSeconds;
     const annotationDelta = session.pendingAnnotationCount;
     const itemSessionDelta = session.pendingItemSessionCount;
     const events = session.pendingEvents.splice(0);
@@ -244,6 +255,7 @@ export class ReadingSessionCoordinator {
     }));
     session.pendingForegroundSeconds = 0;
     session.pendingEffectiveSeconds = 0;
+    session.pendingNoteEditingSeconds = 0;
     session.pendingAnnotationCount = 0;
     session.pendingItemSessionCount = 0;
     session.dailyDeltas.clear();
@@ -256,12 +268,14 @@ export class ReadingSessionCoordinator {
              ended_at = ?,
              foreground_seconds = foreground_seconds + ?,
              effective_seconds = effective_seconds + ?,
+             note_editing_seconds = note_editing_seconds + ?,
              annotation_count = annotation_count + ?
            WHERE id = ?`,
           [
             finish ? observedAt : null,
             foregroundDelta,
             effectiveDelta,
+            noteEditingDelta,
             annotationDelta,
             session.id,
           ],
@@ -292,6 +306,7 @@ export class ReadingSessionCoordinator {
             observedAt,
             foregroundDelta,
             effectiveDelta,
+            noteEditingDelta,
             annotationDelta,
             itemSessionDelta,
             dailyDeltas.reduce((sum, day) => sum + day.selectionCount, 0),
@@ -310,13 +325,14 @@ export class ReadingSessionCoordinator {
     await this.database.db.queryAsync(
       `INSERT INTO daily_item_stats (
         local_date, timezone, library_id, item_key, attachment_key,
-        foreground_seconds, effective_seconds, session_count,
+        foreground_seconds, effective_seconds, note_editing_seconds, session_count,
         annotation_count, selection_count, search_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(local_date, timezone, library_id, item_key, attachment_key)
       DO UPDATE SET
         foreground_seconds = foreground_seconds + excluded.foreground_seconds,
         effective_seconds = effective_seconds + excluded.effective_seconds,
+        note_editing_seconds = note_editing_seconds + excluded.note_editing_seconds,
         session_count = session_count + excluded.session_count,
         annotation_count = annotation_count + excluded.annotation_count,
         selection_count = selection_count + excluded.selection_count,
@@ -329,6 +345,7 @@ export class ReadingSessionCoordinator {
         item.attachmentKey,
         daily.foregroundSeconds,
         daily.effectiveSeconds,
+        daily.noteEditingSeconds,
         daily.countSession ? 1 : 0,
         daily.annotationCount,
         daily.selectionCount,
@@ -342,6 +359,7 @@ export class ReadingSessionCoordinator {
     observedAt: number,
     foregroundDelta: number,
     effectiveDelta: number,
+    noteEditingDelta: number,
     annotationDelta: number,
     sessionDelta: number,
     selectionDelta: number,
@@ -351,14 +369,15 @@ export class ReadingSessionCoordinator {
     await this.database.db.queryAsync(
       `INSERT INTO item_totals (
         library_id, item_key, attachment_key, title_snapshot,
-        foreground_seconds, effective_seconds, session_count,
+        foreground_seconds, effective_seconds, note_editing_seconds, session_count,
         annotation_count, selection_count, search_count,
         first_read_at, last_read_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(library_id, item_key, attachment_key) DO UPDATE SET
         title_snapshot = excluded.title_snapshot,
         foreground_seconds = foreground_seconds + excluded.foreground_seconds,
         effective_seconds = effective_seconds + excluded.effective_seconds,
+        note_editing_seconds = note_editing_seconds + excluded.note_editing_seconds,
         session_count = session_count + excluded.session_count,
         annotation_count = annotation_count + excluded.annotation_count,
         selection_count = selection_count + excluded.selection_count,
@@ -371,6 +390,7 @@ export class ReadingSessionCoordinator {
         item.title,
         foregroundDelta,
         effectiveDelta,
+        noteEditingDelta,
         sessionDelta,
         annotationDelta,
         selectionDelta,
@@ -386,10 +406,12 @@ export class ReadingSessionCoordinator {
     observedAt: number,
     foregroundSeconds: number,
     effectiveSeconds: number,
+    noteEditingSeconds: number,
   ): void {
     const daily = this.getDailyDelta(session, observedAt);
     daily.foregroundSeconds += foregroundSeconds;
     daily.effectiveSeconds += effectiveSeconds;
+    daily.noteEditingSeconds += noteEditingSeconds;
   }
 
   private getDailyDelta(
@@ -406,6 +428,7 @@ export class ReadingSessionCoordinator {
         timezone: session.timezone,
         foregroundSeconds: 0,
         effectiveSeconds: 0,
+        noteEditingSeconds: 0,
         annotationCount: 0,
         selectionCount: 0,
         searchCount: 0,

@@ -1,4 +1,5 @@
 import { ReaderActivityController } from "./tracking/reader-activity-controller";
+import { getReadingItemTitle, openReadingItem } from "./tracking/reading-item";
 import { PaperPetDatabase } from "./storage/paperpet-database";
 import { ReadingSessionCoordinator } from "./sessions/reading-session-coordinator";
 import {
@@ -164,15 +165,7 @@ export class PaperPetRuntime {
         },
         onExcludeSession: (sessionID, excluded) =>
           this.database.excludeSession(sessionID, excluded),
-        onOpenItem: async (item) => {
-          const attachment = await Zotero.Items.getByLibraryAndKeyAsync(
-            item.libraryID,
-            item.attachmentKey,
-          );
-          if (!attachment)
-            throw new Error("The Zotero attachment could not be found");
-          await Zotero.FileHandlers.open(attachment);
-        },
+        onOpenItem: openReadingItem,
         onResolveItemTitle: (item) => this.resolveItemTitle(item),
       },
     );
@@ -417,7 +410,7 @@ export class PaperPetRuntime {
       }
       for (const source of [parent, candidate]) {
         if (!source) continue;
-        const title = String(source.getField("title") || "").trim();
+        const title = getReadingItemTitle(source);
         if (title) {
           this.diagnostics.lastTitleResult = `${title}（${key === item.itemKey ? "条目" : "附件/父条目"}）`;
           this.recordDiagnostic("文献标题查询成功");

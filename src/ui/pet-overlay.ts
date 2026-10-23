@@ -635,9 +635,18 @@ export class PetOverlay {
 
     const mode = this.modeCopy(snapshot.mode);
     const duration = this.formatDuration(snapshot.effectiveReadingSeconds);
-    return this.copy(
+    const message = this.copy(
       `我现在${mode.chinese}。本次已识别 ${duration} 的有效阅读。`,
       `I am ${mode.english}. ${duration} of effective reading recognized this session.`,
+    );
+    if (snapshot.noteEditingSeconds <= 0) return message;
+    const editing = this.formatDuration(snapshot.noteEditingSeconds);
+    return (
+      message +
+      this.copy(
+        `其中笔记编辑 ${editing}。`,
+        ` Including ${editing} editing notes.`,
+      )
     );
   }
 
@@ -649,8 +658,8 @@ export class PetOverlay {
       thinking: { chinese: "陪你思考", english: "thinking with you" },
       skimming: { chinese: "跟着你快速浏览", english: "skimming with you" },
       annotating: {
-        chinese: "帮你守着批注",
-        english: "watching your annotations",
+        chinese: "陪你做批注和笔记",
+        english: "keeping you company with annotations and notes",
       },
       uncertain: { chinese: "留意你的阅读", english: "noticing your reading" },
       sleeping: { chinese: "安静睡着了", english: "quietly asleep" },

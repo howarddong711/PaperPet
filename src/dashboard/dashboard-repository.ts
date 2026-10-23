@@ -4,6 +4,7 @@ export interface DailyReadingPoint {
   date: string;
   foregroundSeconds: number;
   effectiveSeconds: number;
+  noteEditingSeconds: number;
   sessionCount: number;
 }
 
@@ -19,6 +20,7 @@ export interface RecentReadingItem {
   title: string;
   foregroundSeconds: number;
   effectiveSeconds: number;
+  noteEditingSeconds: number;
   sessionCount: number;
   annotationCount: number;
   lastReadAt: number;
@@ -30,6 +32,7 @@ export interface ReadingOverviewData {
   recentItems: RecentReadingItem[];
   foregroundSeconds: number;
   effectiveSeconds: number;
+  noteEditingSeconds: number;
   sessionCount: number;
   paperCount: number;
   startDate: string;
@@ -42,6 +45,7 @@ export interface ReadingSessionRow {
   endedAt?: number;
   foregroundSeconds: number;
   effectiveSeconds: number;
+  noteEditingSeconds: number;
   annotationCount: number;
   excluded: boolean;
 }
@@ -69,6 +73,7 @@ export class DashboardRepository {
       itemRows,
       foregroundSeconds,
       effectiveSeconds,
+      noteEditingSeconds,
       sessionCount,
       paperCount,
     ] = await Promise.all([
@@ -76,6 +81,7 @@ export class DashboardRepository {
         `SELECT strftime('%Y-%m-%d', started_at / 1000, 'unixepoch', 'localtime') AS local_date,
           SUM(foreground_seconds) AS foreground_seconds,
           SUM(effective_seconds) AS effective_seconds,
+          SUM(note_editing_seconds) AS note_editing_seconds,
           COUNT(*) AS session_count
         FROM reading_sessions
         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0
@@ -99,6 +105,7 @@ export class DashboardRepository {
         `SELECT library_id, item_key, attachment_key, title_snapshot,
           SUM(foreground_seconds) AS foreground_seconds,
           SUM(effective_seconds) AS effective_seconds, COUNT(*) AS session_count,
+          SUM(note_editing_seconds) AS note_editing_seconds,
           SUM(annotation_count) AS annotation_count, MAX(started_at) AS last_read_at
         FROM reading_sessions
         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0
@@ -114,6 +121,11 @@ export class DashboardRepository {
       ),
       this.database.db.valueQueryAsync<number>(
         `SELECT COALESCE(SUM(effective_seconds), 0) FROM reading_sessions
+         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0`,
+        [cutoff, endExclusive],
+      ),
+      this.database.db.valueQueryAsync<number>(
+        `SELECT COALESCE(SUM(note_editing_seconds), 0) FROM reading_sessions
          WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0`,
         [cutoff, endExclusive],
       ),
@@ -144,6 +156,7 @@ export class DashboardRepository {
           date,
           foregroundSeconds: 0,
           effectiveSeconds: 0,
+          noteEditingSeconds: 0,
           sessionCount: 0,
         }
       );
@@ -160,6 +173,7 @@ export class DashboardRepository {
       recentItems: (itemRows ?? []).map(mapRecentItem),
       foregroundSeconds: Number(foregroundSeconds ?? 0),
       effectiveSeconds: Number(effectiveSeconds ?? 0),
+      noteEditingSeconds: Number(noteEditingSeconds ?? 0),
       sessionCount: Number(sessionCount ?? 0),
       paperCount: Number(paperCount ?? 0),
       startDate,
@@ -175,6 +189,7 @@ export class DashboardRepository {
         `SELECT local_date,
           SUM(foreground_seconds) AS foreground_seconds,
           SUM(effective_seconds) AS effective_seconds,
+          SUM(note_editing_seconds) AS note_editing_seconds,
           SUM(session_count) AS session_count
         FROM daily_item_stats
         WHERE library_id = ? AND item_key = ? AND attachment_key = ?
@@ -185,6 +200,7 @@ export class DashboardRepository {
         `SELECT library_id, item_key, attachment_key, title_snapshot,
           SUM(CASE WHEN excluded = 0 THEN foreground_seconds ELSE 0 END) AS foreground_seconds,
           SUM(CASE WHEN excluded = 0 THEN effective_seconds ELSE 0 END) AS effective_seconds,
+          SUM(CASE WHEN excluded = 0 THEN note_editing_seconds ELSE 0 END) AS note_editing_seconds,
           SUM(CASE WHEN excluded = 0 THEN 1 ELSE 0 END) AS session_count,
           SUM(CASE WHEN excluded = 0 THEN annotation_count ELSE 0 END) AS annotation_count,
           MAX(started_at) AS last_read_at
@@ -195,7 +211,7 @@ export class DashboardRepository {
       ),
       this.database.db.queryAsync(
         `SELECT id, started_at, ended_at, foreground_seconds,
-          effective_seconds, annotation_count, excluded
+          effective_seconds, note_editing_seconds, annotation_count, excluded
         FROM reading_sessions
         WHERE library_id = ? AND item_key = ? AND attachment_key = ?
           AND deleted = 0
@@ -222,6 +238,7 @@ export class DashboardRepository {
             ...item,
             foregroundSeconds: 0,
             effectiveSeconds: 0,
+            noteEditingSeconds: 0,
             sessionCount: 0,
             annotationCount: 0,
           },
@@ -239,6 +256,7 @@ export class DashboardRepository {
               : Number(values.ended_at),
           foregroundSeconds: Number(values.foreground_seconds),
           effectiveSeconds: Number(values.effective_seconds),
+          noteEditingSeconds: Number(values.note_editing_seconds ?? 0),
           annotationCount: Number(values.annotation_count),
           excluded: Number(values.excluded) === 1,
         };
@@ -254,6 +272,7 @@ function mapDaily(values: Record<string, unknown>): DailyReadingPoint {
     date: String(values.local_date),
     foregroundSeconds: Number(values.foreground_seconds),
     effectiveSeconds: Number(values.effective_seconds),
+    noteEditingSeconds: Number(values.note_editing_seconds ?? 0),
     sessionCount: Number(values.session_count),
   };
 }
@@ -267,6 +286,7 @@ function mapRecentItem(row: _ZoteroTypes.anyObj): RecentReadingItem {
     title: String(values.title_snapshot || ""),
     foregroundSeconds: Number(values.foreground_seconds),
     effectiveSeconds: Number(values.effective_seconds),
+    noteEditingSeconds: Number(values.note_editing_seconds ?? 0),
     sessionCount: Number(values.session_count),
     annotationCount: Number(values.annotation_count),
     lastReadAt: Number(values.last_read_at),

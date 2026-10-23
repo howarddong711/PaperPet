@@ -7,6 +7,7 @@ import {
 import type { CurrentSessionSummary } from "../sessions/reading-session-coordinator";
 import type { GrowthSnapshot } from "../growth/growth-service";
 import type { BackupScope } from "../storage/paperpet-database";
+import { NOTE_EDITING_IDLE_SECONDS } from "../model/reading-activity-model";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
@@ -130,6 +131,10 @@ export class DashboardView {
         formatDuration(data.effectiveSeconds, Zotero.locale),
       ),
       this.metric(
+        this.copy("其中笔记编辑", "Of which: note editing"),
+        formatDuration(data.noteEditingSeconds, Zotero.locale),
+      ),
+      this.metric(
         this.copy("阅读器前台时长", "Foreground reader time"),
         formatDuration(data.foregroundSeconds, Zotero.locale),
       ),
@@ -208,6 +213,10 @@ export class DashboardView {
       this.metric(
         this.copy("累计有效阅读", "Effective reading"),
         formatDuration(item.effectiveSeconds, Zotero.locale),
+      ),
+      this.metric(
+        this.copy("其中笔记编辑", "Of which: note editing"),
+        formatDuration(item.noteEditingSeconds, Zotero.locale),
       ),
       this.metric(
         this.copy("累计前台时间", "Foreground time"),
@@ -414,7 +423,7 @@ export class DashboardView {
       column.className = "paperpet-chart__column";
       const bars = this.createElement("div");
       bars.className = "paperpet-chart__bars";
-      bars.title = `${point.date} · ${this.copy("估计阅读", "Estimated reading")}: ${formatDuration(point.effectiveSeconds, Zotero.locale)} · ${this.copy("前台时间", "Foreground time")}: ${formatDuration(point.foregroundSeconds, Zotero.locale)}`;
+      bars.title = `${point.date} · ${this.copy("估计阅读", "Estimated reading")}: ${formatDuration(point.effectiveSeconds, Zotero.locale)} · ${this.noteEditingLabel(point.noteEditingSeconds)} · ${this.copy("前台时间", "Foreground time")}: ${formatDuration(point.foregroundSeconds, Zotero.locale)}`;
       bars.tabIndex = 0;
       bars.setAttribute("role", "img");
       bars.setAttribute("aria-label", bars.title);
@@ -466,7 +475,7 @@ export class DashboardView {
           : 0;
       cell.className = "paperpet-heatmap__cell";
       cell.style.setProperty("--paperpet-heat", String(intensity));
-      cell.title = `${point.date} · ${this.copy("有效阅读", "Effective reading")}: ${formatDuration(point.effectiveSeconds, Zotero.locale)}`;
+      cell.title = `${point.date} · ${this.copy("有效阅读", "Effective reading")}: ${formatDuration(point.effectiveSeconds, Zotero.locale)} · ${this.noteEditingLabel(point.noteEditingSeconds)}`;
       cell.setAttribute("aria-label", cell.title);
       cell.tabIndex = 0;
       heatmap.appendChild(cell);
@@ -499,6 +508,9 @@ export class DashboardView {
         );
       const meta = this.createElement("span");
       meta.textContent = `${formatDuration(item.effectiveSeconds, Zotero.locale)} · ${formatDateTime(item.lastReadAt)}`;
+      if (item.noteEditingSeconds > 0) {
+        meta.textContent += ` · ${this.noteEditingLabel(item.noteEditingSeconds)}`;
+      }
       const detail = this.createElement("div");
       detail.className = "paperpet-paper-list__detail";
       detail.setAttribute("role", "button");
@@ -537,7 +549,7 @@ export class DashboardView {
     );
     if (!current) {
       section.appendChild(
-        this.empty(this.copy("打开一篇论文开始阅读", "Open a paper to begin")),
+        this.empty(this.copy("打开文献或笔记开始阅读", "Open a paper or note to begin")),
       );
       return section;
     }
@@ -548,11 +560,16 @@ export class DashboardView {
     time.className = "paperpet-current__time";
     time.textContent = formatDuration(current.effectiveSeconds, Zotero.locale);
     section.append(title, time);
+    if (current.noteEditingSeconds > 0) {
+      section.appendChild(
+        this.empty(this.noteEditingLabel(current.noteEditingSeconds)),
+      );
+    }
     section.appendChild(
       this.empty(
         this.copy(
-          "此处展示打开或刷新报告时的记录。离开 PDF 查看报告时，暂停阅读计时。",
-          "Recorded when this report was opened or refreshed. Reading time pauses while viewing the report instead of the PDF.",
+          "此处展示打开或刷新报告时的记录。离开文献或笔记查看报告时，暂停阅读计时。",
+          "Recorded when this report was opened or refreshed. Reading time pauses while viewing the report instead of a paper or note.",
         ),
       ),
     );
@@ -605,9 +622,15 @@ export class DashboardView {
     const body = this.createElement("div");
     body.className = "paperpet-dashboard__prose";
     body.textContent = this.copy(
-      "有效阅读时长由前台阅读器时间、页面文字采样和翻页/滚动等信号估算；前台时间是阅读器处于活动状态的时间。识别比例 = 有效阅读时长 ÷ 前台阅读器时间。所有统计均按会话开始日期归档，仅计算未删除且未排除的会话，不代表学习效率评分。",
-      "Effective reading is estimated from foreground reader time, visible-text samples, and page/scroll signals. Foreground time is time spent with the reader active. Recognition ratio = effective reading ÷ foreground reader time. Reports use the session start date and include only non-deleted, non-excluded sessions; this is not an efficiency score.",
+      "有效阅读时长由前台阅读器或笔记编辑器时间、可见文字采样和翻页、滚动、选区、笔记编辑等信号估算；前台时间包含阅读文献和读写笔记。论文下的笔记归属父文献，独立笔记单独记录；笔记编辑动作不会增加 PDF 批注数。识别比例 = 有效阅读时长 ÷ 前台时间。所有统计均按会话开始日期归档，仅计算未删除且未排除的会话，不代表学习效率评分。",
+      "Effective reading is estimated from foreground reader or note-editor time, visible-text samples, navigation, selections, and note edits. Foreground time includes reading papers and reading or writing notes. Child notes belong to their parent paper; standalone notes are tracked separately. Note edits do not increase PDF annotation counts. Recognition ratio = effective reading ÷ foreground time. Reports use the session start date and include only non-deleted, non-excluded sessions; this is not an efficiency score.",
     );
+    const noteTiming = this.createElement("p");
+    noteTiming.textContent = this.copy(
+      `笔记编辑时长是有效阅读的一部分，不重复累加。实际输入、粘贴或格式修改后开始估计，连续 ${NOTE_EDITING_IDLE_SECONDS} 秒没有编辑就暂停；切换内容或离开前台立即暂停，返回后需再次编辑。该时长沿用有效阅读的置信度加权，不代表精确按键时间。仅阅读笔记、选区或自动保存不会启动编辑计时，不保存笔记正文。旧记录未采集此项，显示为零。`,
+      `Note editing is part of effective reading, not additional time. Actual input, pasting, or formatting starts the estimate, which pauses after ${NOTE_EDITING_IDLE_SECONDS} seconds without edits, on a source switch, or on focus loss; returning requires a new edit. The same confidence weighting is applied as for effective reading, so this is not exact keystroke time. Reading, selecting text, and autosaves do not start it. Note content is never stored. Older records show zero because this metric was not collected.`,
+    );
+    body.appendChild(noteTiming);
     details.append(summary, body);
     section.appendChild(details);
     return section;
@@ -671,6 +694,7 @@ export class DashboardView {
       recentItems: [],
       foregroundSeconds: detail.item.foregroundSeconds,
       effectiveSeconds: detail.item.effectiveSeconds,
+      noteEditingSeconds: detail.item.noteEditingSeconds,
       sessionCount: detail.item.sessionCount,
       paperCount: 1,
       startDate: detail.daily[0]?.date ?? localDateInput(Date.now()),
@@ -712,6 +736,12 @@ export class DashboardView {
           `${session.annotationCount} 条批注`,
           `${session.annotationCount} annotations`,
         );
+      if (session.noteEditingSeconds > 0) {
+        const editing = this.createElement("span");
+        editing.className = "paperpet-session-list__note-editing";
+        editing.textContent = this.noteEditingLabel(session.noteEditingSeconds);
+        annotation.appendChild(editing);
+      }
       const action = this.createElement("button");
       action.type = "button";
       action.className = "paperpet-session-list__action";
@@ -743,6 +773,14 @@ export class DashboardView {
     }
     section.appendChild(list);
     return section;
+  }
+
+  private noteEditingLabel(seconds: number): string {
+    const duration = formatDuration(seconds, Zotero.locale);
+    return this.copy(
+      `其中笔记编辑 ${duration}`,
+      `Incl. ${duration} editing notes`,
+    );
   }
 
   private async resolveItemTitles(items: RecentReadingItem[]): Promise<void> {
@@ -870,6 +908,7 @@ function formatDateTime(timestamp: number): string {
 function behaviorLabel(type: string, locale: string): string {
   const chinese: Record<string, string> = {
     annotation: "批注",
+    "note-edit": "笔记编辑",
     "content-click": "内容点击",
     "keyboard-navigation": "键盘翻阅",
     "page-change": "翻页",
@@ -880,6 +919,7 @@ function behaviorLabel(type: string, locale: string): string {
   };
   const english: Record<string, string> = {
     annotation: "Annotations",
+    "note-edit": "Note edits",
     "content-click": "Content clicks",
     "keyboard-navigation": "Keyboard navigation",
     "page-change": "Page changes",

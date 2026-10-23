@@ -7,13 +7,16 @@ import {
   type ReadingSignal,
 } from "../model/reading-activity-model";
 import type { PaperPetSettings } from "../settings/paperpet-settings";
+import {
+  getNoteActivityTargets,
+  isForegroundWindow,
+  selectActiveNote,
+  type NoteActivityTarget,
+} from "./note-activity-context";
+import { getReadingItemIdentity } from "./reading-item";
+import type { ReaderItemIdentity } from "./reading-item";
 
-export interface ReaderItemIdentity {
-  libraryID: number;
-  itemKey: string;
-  attachmentKey: string;
-  title: string;
-}
+export type { ReaderItemIdentity } from "./reading-item";
 
 export interface ReadingActivityUpdate {
   snapshot: ReadingActivitySnapshot;
@@ -78,7 +81,12 @@ export class ReaderActivityController {
   private observerID?: string;
   private intervalID?: number;
   private activeReader?: ReaderAdapter;
+  private noteTargets: NoteActivityTarget[] = [];
+  private activeNote?: NoteActivityTarget;
   private activeTabID?: string;
+  private interactionWindow?: Window;
+  private activeSourceKey?: string;
+  private activityReady = false;
   private lastContentSample: ContentSample = {};
   private lastContentSampleAt = 0;
 
@@ -123,6 +131,9 @@ export class ReaderActivityController {
     }
     this.unbindReaderTargets();
     this.activeReader = undefined;
+    this.activeNote = undefined;
+    this.noteTargets = [];
+    this.interactionWindow = undefined;
     this.activeTabID = undefined;
   }
 
@@ -147,7 +158,10 @@ export class ReaderActivityController {
     }
 
     if (type === "file" && String(event) === "pageChange") {
-      if (ids.some((id) => String(id) === String(this.activeReader?.itemID))) {
+      if (
+        !this.activeNote &&
+        ids.some((id) => String(id) === String(this.activeReader?.itemID))
+      ) {
         this.recordSignal("page-change", Date.now());
       }
       return;
@@ -157,7 +171,9 @@ export class ReaderActivityController {
       return;
     }
 
-    const attachmentID = this.activeReader?.itemID;
+    const attachmentID = this.activeNote
+      ? undefined
+      : this.activeReader?.itemID;
     if (attachmentID === undefined) {
       return;
     }
@@ -175,39 +191,66 @@ export class ReaderActivityController {
     }
   };
 
-  private refreshReader(): void {
+  private refreshReader(interactionWindow?: Window): void {
     const { Zotero_Tabs: tabs } = this.window;
-    const tabID = tabs.selectedType === "reader" ? tabs.selectedID : undefined;
-    const reader = tabID
-      ? (Zotero.Reader.getByTabID(tabID) as ReaderAdapter | undefined)
-      : undefined;
-    const targetsChanged =
-      reader !== this.activeReader ||
+    const tabID = tabs.selectedID;
+    const reader =
+      tabs.selectedType === "reader"
+        ? (Zotero.Reader.getByTabID(tabID) as ReaderAdapter | undefined)
+        : undefined;
+    const notes = getNoteActivityTargets(this.window);
+    const windows = [
+      ...(reader ? this.getReaderWindows(reader) : []),
+      ...notes.map((target) => target.frameWindow),
+    ];
+    if (
       tabID !== this.activeTabID ||
-      !this.boundTargetsAreCurrent(reader);
-
-    if (!targetsChanged) {
-      return;
+      !windows.includes(this.interactionWindow as Window)
+    ) {
+      this.interactionWindow = undefined;
     }
+    if (interactionWindow && windows.includes(interactionWindow)) {
+      this.interactionWindow = interactionWindow;
+    }
+    const note = selectActiveNote(
+      notes,
+      this.window,
+      this.window.Services.focus.activeWindow,
+      this.interactionWindow,
+    );
+    const source = note?.editor._item ?? reader?._item;
+    const sourceKey = source
+      ? `${source.libraryID}/${source.key || "unsaved"}`
+      : undefined;
+    const contextChanged =
+      note?.editor !== this.activeNote?.editor ||
+      (!note && reader !== this.activeReader) ||
+      sourceKey !== this.activeSourceKey;
+    const wasReady = this.activityReady;
 
-    const readerChanged =
-      reader !== this.activeReader || tabID !== this.activeTabID;
-    this.unbindReaderTargets();
     this.activeReader = reader;
+    this.noteTargets = notes;
+    this.activeNote = note;
     this.activeTabID = tabID;
+    this.activeSourceKey = sourceKey;
+    this.activityReady = Boolean(note || this.hasReadyReader());
 
-    if (!reader) {
-      return;
+    if (!this.boundTargetsAreCurrent(windows)) {
+      this.unbindReaderTargets();
+      this.bindReaderTargets(windows);
     }
-
-    this.bindReaderTargets(reader);
-    if (readerChanged) {
-      this.recordSignal("page-change", Date.now());
+    if (contextChanged) {
+      this.model.resetActivity(Date.now());
+      this.lastSignalAt.clear();
+      this.lastContentSample = {};
+      this.lastContentSampleAt = 0;
+    }
+    if (contextChanged || (!wasReady && this.activityReady)) {
+      this.recordSignal(note ? "content-click" : "page-change");
     }
   }
 
-  private bindReaderTargets(reader: ReaderAdapter): void {
-    const windows = this.getReaderWindows(reader);
+  private bindReaderTargets(windows: Window[]): void {
     for (const frameWindow of windows) {
       this.bind(frameWindow, "wheel", this.onWheel, { passive: true });
       this.bind(frameWindow, "scroll", this.onScroll, {
@@ -218,6 +261,9 @@ export class ReaderActivityController {
       this.bind(frameWindow, "click", this.onContentClick, true);
       this.bind(frameWindow, "mousemove", this.onMouseMove, { passive: true });
       this.bind(frameWindow, "input", this.onInput, true);
+      this.bind(frameWindow, "compositionend", this.onInput, true);
+      this.bind(frameWindow, "message", this.onNoteMessage);
+      this.bind(frameWindow, "focus", this.onContentFocus, true);
 
       const document = frameWindow.document;
       this.bind(document, "selectionchange", this.onSelectionChange);
@@ -226,11 +272,15 @@ export class ReaderActivityController {
 
   private unbindReaderTargets(): void {
     for (const binding of this.boundTargets) {
-      binding.target.removeEventListener(
-        binding.type,
-        binding.listener,
-        binding.options,
-      );
+      try {
+        binding.target.removeEventListener(
+          binding.type,
+          binding.listener,
+          binding.options,
+        );
+      } catch {
+        // A closed native note window can already be a dead Gecko wrapper.
+      }
     }
     this.boundTargets.length = 0;
   }
@@ -257,80 +307,92 @@ export class ReaderActivityController {
     );
   }
 
-  private boundTargetsAreCurrent(reader?: ReaderAdapter): boolean {
-    if (!reader) {
-      return this.boundTargets.length === 0;
+  private boundTargetsAreCurrent(currentWindows: Window[]): boolean {
+    try {
+      const boundWindows = new Set(
+        this.boundTargets
+          .map((binding) => {
+            const target = binding.target;
+            return "defaultView" in target ? target.defaultView : target;
+          })
+          .filter((target): target is Window => Boolean(target)),
+      );
+      return (
+        currentWindows.length === boundWindows.size &&
+        currentWindows.every(
+          (frameWindow) =>
+            boundWindows.has(frameWindow) &&
+            this.boundTargets.some(
+              (binding) => binding.target === frameWindow.document,
+            ),
+        )
+      );
+    } catch {
+      return false;
     }
-    const boundWindows = new Set(
-      this.boundTargets
-        .map((binding) => {
-          const target = binding.target;
-          return "defaultView" in target ? target.defaultView : target;
-        })
-        .filter((target): target is Window => Boolean(target)),
-    );
-    const currentWindows = this.getReaderWindows(reader);
+  }
+
+  private hasReadyReader(): boolean {
+    if (!this.activeReader) return false;
+    const windows = this.getReaderWindows(this.activeReader);
     return (
-      currentWindows.length > 0 &&
-      currentWindows.length === boundWindows.size &&
-      currentWindows.every((frameWindow) => boundWindows.has(frameWindow))
+      windows.length > 0 &&
+      (this.activeReader._isReaderInitialized ||
+        windows.some(
+          (frameWindow) => frameWindow.document.readyState !== "loading",
+        ))
     );
   }
 
   private isForegroundReader(): boolean {
-    const documentVisible = this.window.document.visibilityState !== "hidden";
-    const appFocused =
-      this.window.Services.focus.activeWindow === this.window ||
-      this.window.document.hasFocus();
-    const windowMinimized =
-      this.window.windowState === this.window.STATE_MINIMIZED;
-    const readerWindows = this.activeReader
-      ? this.getReaderWindows(this.activeReader)
-      : [];
-    const readerReady = Boolean(
-      this.activeReader &&
-      readerWindows.length > 0 &&
-      (this.activeReader._isReaderInitialized ||
-        readerWindows.some(
-          (frameWindow) => frameWindow.document.readyState !== "loading",
-        )),
-    );
-
+    const host = this.activeNote?.hostWindow ?? this.window;
     return calculateForegroundGate({
-      appFocused,
-      windowMinimized,
-      documentVisible,
-      activeTabType: this.window.Zotero_Tabs.selectedType,
-      readerReady,
+      appFocused: isForegroundWindow(
+        host,
+        this.window.Services.focus.activeWindow,
+      ),
+      windowMinimized: false,
+      documentVisible: host.document.visibilityState !== "hidden",
+      activeTabType: this.activeNote
+        ? "note"
+        : this.window.Zotero_Tabs.selectedType,
+      readerReady: Boolean(this.activeNote || this.hasReadyReader()),
     });
   }
 
   private readonly onWheel: EventListener = (rawEvent): void => {
     const event = rawEvent as WheelEvent;
-    this.recordSignal(event.ctrlKey || event.metaKey ? "zoom" : "scroll");
+    this.recordContentSignal(
+      event.ctrlKey || event.metaKey ? "zoom" : "scroll",
+      rawEvent,
+    );
   };
 
-  private readonly onScroll: EventListener = (): void => {
-    this.recordSignal("scroll");
+  private readonly onScroll: EventListener = (event): void => {
+    this.recordContentSignal("scroll", event);
   };
 
   private readonly onKeyDown: EventListener = (rawEvent): void => {
     const event = rawEvent as KeyboardEvent;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
-      this.recordSignal("search");
+      this.recordContentSignal("search", rawEvent);
       return;
     }
     if (NAVIGATION_KEYS.has(event.key)) {
-      this.recordSignal("keyboard-navigation");
+      this.recordContentSignal("keyboard-navigation", rawEvent);
     }
   };
 
-  private readonly onContentClick: EventListener = (): void => {
-    this.recordSignal("content-click");
+  private readonly onContentClick: EventListener = (event): void => {
+    this.recordContentSignal("content-click", event);
   };
 
-  private readonly onMouseMove: EventListener = (): void => {
-    this.recordSignal("mouse-move");
+  private readonly onContentFocus: EventListener = (event): void => {
+    this.recordContentSignal("content-click", event);
+  };
+
+  private readonly onMouseMove: EventListener = (event): void => {
+    this.recordContentSignal("mouse-move", event);
   };
 
   private readonly onInput: EventListener = (rawEvent): void => {
@@ -340,7 +402,36 @@ export class ReaderActivityController {
     }
     const identity = `${target.id} ${target.className} ${target.getAttribute("aria-label") ?? ""}`;
     if (/find|search/i.test(identity)) {
-      this.recordSignal("search");
+      this.recordContentSignal("search", rawEvent);
+    } else if (target.closest(".ProseMirror, [contenteditable='true']")) {
+      const note = this.noteTargets.find(
+        (target) =>
+          target.frameWindow.document ===
+          (rawEvent.target as Element).ownerDocument,
+      );
+      if (note && !note.editor._readOnly) {
+        this.recordContentSignal("note-edit", rawEvent);
+      }
+    }
+  };
+
+  private readonly onNoteMessage: EventListener = (rawEvent): void => {
+    const event = rawEvent as MessageEvent;
+    const note = this.noteTargets.find(
+      (target) => target.frameWindow === event.currentTarget,
+    );
+    if (
+      note &&
+      !note.editor._readOnly &&
+      note.editor.instanceID &&
+      event.source === note.frameWindow &&
+      event.data?.instanceID === note.editor.instanceID &&
+      event.data?.message?.action === "update" &&
+      !event.data.message.system
+    ) {
+      // Native editor transactions also cover formatting, undo and pasted content.
+      // Never read or persist noteData, and ignore automatic/system updates.
+      this.recordContentSignal("note-edit", rawEvent);
     }
   };
 
@@ -350,12 +441,29 @@ export class ReaderActivityController {
       return;
     }
     if (document.getSelection()?.toString().trim()) {
-      this.recordSignal("selection");
+      this.recordContentSignal("selection", rawEvent);
     }
   };
 
+  private recordContentSignal(type: ReadingSignal, event: Event): void {
+    const target = event.currentTarget as Window | Document | null;
+    const frameWindow =
+      target && ("defaultView" in target ? target.defaultView : target);
+    if (!frameWindow) return;
+    if (type !== "mouse-move") this.refreshReader(frameWindow);
+    const activeWindows = this.activeNote
+      ? [this.activeNote.frameWindow]
+      : this.activeReader
+        ? this.getReaderWindows(this.activeReader)
+        : [];
+    if (activeWindows.includes(frameWindow)) this.recordSignal(type);
+  }
+
   private recordSignal(type: ReadingSignal, now = Date.now()): void {
-    if (!this.settings?.trackingEnabled && type !== "pet-interaction") {
+    if (
+      type !== "pet-interaction" &&
+      (!(this.settings?.trackingEnabled ?? true) || !this.isForegroundReader())
+    ) {
       return;
     }
     const isWeak = type === "mouse-move" || type === "pet-interaction";
@@ -371,24 +479,28 @@ export class ReaderActivityController {
     const sample = isWeak ? {} : this.sampleVisibleContent(now);
     this.model.recordSignal(type, now, sample);
     this.publishSnapshot(now);
-    if (type !== "mouse-move" && type !== "pet-interaction") {
+    if (
+      type !== "mouse-move" &&
+      type !== "pet-interaction" &&
+      this.getItemIdentity()
+    ) {
       this.onSemanticEvent?.({
         type,
         observedAt: now,
-        pageIndex: this.activeReader?.state?.pageIndex,
+        pageIndex: this.activeNote
+          ? undefined
+          : this.activeReader?.state?.pageIndex,
       });
     }
   }
 
   private publishSnapshot(observedAt: number): void {
     const trackingEnabled = this.settings?.trackingEnabled ?? true;
+    const foreground = trackingEnabled && this.isForegroundReader();
     this.onSnapshot({
-      snapshot: this.model.tick(
-        trackingEnabled && this.isForegroundReader(),
-        observedAt,
-      ),
+      snapshot: this.model.tick(foreground, observedAt),
       observedAt,
-      item: this.getItemIdentity(),
+      item: foreground ? this.getItemIdentity() : undefined,
     });
   }
 
@@ -404,20 +516,9 @@ export class ReaderActivityController {
   }
 
   private getItemIdentity(): ReaderItemIdentity | undefined {
-    const attachment = this.activeReader?._item;
-    if (!attachment) {
-      return undefined;
-    }
-    const parent = attachment.parentItemID
-      ? Zotero.Items.get(attachment.parentItemID)
-      : false;
-    const bibliographicItem = parent || attachment;
-    return {
-      libraryID: bibliographicItem.libraryID,
-      itemKey: bibliographicItem.key,
-      attachmentKey: attachment.key,
-      title: String(bibliographicItem.getField("title") || ""),
-    };
+    return getReadingItemIdentity(
+      this.activeNote?.editor._item ?? this.activeReader?._item,
+    );
   }
 
   private sampleVisibleContent(now: number): ContentSample {
@@ -426,9 +527,12 @@ export class ReaderActivityController {
     }
     this.lastContentSampleAt = now;
 
-    for (const frameWindow of this.activeReader
-      ? this.getReaderWindows(this.activeReader).toReversed()
-      : []) {
+    const windows = this.activeNote
+      ? [this.activeNote.frameWindow]
+      : this.activeReader
+        ? this.getReaderWindows(this.activeReader).toReversed()
+        : [];
+    for (const frameWindow of windows) {
       const text = this.collectVisibleReaderText(frameWindow);
       const visibleWords = this.countApproximateWords(text);
       if (visibleWords > 0) {
@@ -445,7 +549,9 @@ export class ReaderActivityController {
     const { document } = frameWindow;
     const preferred = Array.from(
       document.querySelectorAll<HTMLElement>(
-        ".textLayer, article, main, [role='document']",
+        this.activeNote
+          ? ".ProseMirror > *"
+          : ".textLayer, article, main, [role='document']",
       ),
     ) as HTMLElement[];
     const visible = preferred.filter((element) => {
