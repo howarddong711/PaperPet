@@ -7,6 +7,7 @@ export interface PaperPetSettings {
   dragThreshold: number;
   doubleClickDelay: number;
   trackingEnabled: boolean;
+  syncEnabled: boolean;
   personalWordsPerMinute: number;
   defaultExpectedSeconds: number;
   sleepDelaySeconds: number;
@@ -20,6 +21,7 @@ export const DEFAULT_PAPERPET_SETTINGS: Readonly<PaperPetSettings> = {
   dragThreshold: 6,
   doubleClickDelay: 260,
   trackingEnabled: true,
+  syncEnabled: false,
   personalWordsPerMinute: 200,
   defaultExpectedSeconds: 60,
   sleepDelaySeconds: 15,
@@ -27,20 +29,45 @@ export const DEFAULT_PAPERPET_SETTINGS: Readonly<PaperPetSettings> = {
 };
 
 const SETTINGS_KEY = "user_preferences_v1";
+const LOCAL_SYNC_ENABLED_KEY = "sync_enabled_v1";
 
 export class PaperPetSettingsStore {
   public constructor(private readonly database: PaperPetDatabase) {}
 
   public async load(): Promise<PaperPetSettings> {
     const stored = await this.database.getSetting<unknown>(SETTINGS_KEY);
-    return normalizePaperPetSettings(stored);
+    let syncEnabled = await this.database.getSetting<boolean>(LOCAL_SYNC_ENABLED_KEY);
+    if (syncEnabled === undefined) {
+      syncEnabled = normalizePaperPetSettings(stored).syncEnabled;
+      await this.database.setSetting(LOCAL_SYNC_ENABLED_KEY, syncEnabled);
+    }
+    return normalizePaperPetSettings({
+      ...(isRecord(stored) ? stored : {}),
+      syncEnabled,
+    });
   }
 
   public async save(candidate: unknown): Promise<PaperPetSettings> {
     const settings = normalizePaperPetSettings(candidate);
-    await this.database.setSetting(SETTINGS_KEY, settings);
+    const stored = await this.database.getSetting<unknown>(SETTINGS_KEY);
+    const previous = normalizePaperPetSettings(stored);
+    if (
+      JSON.stringify(syncablePreferences(settings)) !==
+      JSON.stringify(syncablePreferences(previous))
+    ) {
+      await this.database.setSetting(SETTINGS_KEY, syncablePreferences(settings));
+    }
+    const localSyncEnabled = await this.database.getSetting<boolean>(LOCAL_SYNC_ENABLED_KEY);
+    if (localSyncEnabled !== settings.syncEnabled) {
+      await this.database.setSetting(LOCAL_SYNC_ENABLED_KEY, settings.syncEnabled);
+    }
     return settings;
   }
+}
+
+function syncablePreferences(settings: PaperPetSettings): Omit<PaperPetSettings, "syncEnabled"> {
+  const { syncEnabled: _localOnly, ...preferences } = settings;
+  return preferences;
 }
 
 export function normalizePaperPetSettings(
@@ -60,6 +87,7 @@ export function normalizePaperPetSettings(
       260,
     ),
     trackingEnabled: booleanValue(values.trackingEnabled, true),
+    syncEnabled: booleanValue(values.syncEnabled, false),
     personalWordsPerMinute: boundedNumber(
       values.personalWordsPerMinute,
       80,

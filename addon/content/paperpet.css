@@ -828,9 +828,46 @@
   display: grid;
   padding: 10px 2px;
   border-bottom: 1px solid var(--paperpet-dashboard-line);
-  grid-template-columns: minmax(140px, 1fr) 100px minmax(140px, 1fr) auto;
+  grid-template-columns:
+    minmax(110px, 1fr) minmax(90px, 1fr) 80px minmax(130px, 1fr)
+    auto;
   gap: 12px;
   font-size: 12px;
+}
+
+.paperpet-session-list__source {
+  color: var(--paperpet-dashboard-muted);
+}
+
+.paperpet-source-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.paperpet-source-list__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 0;
+  border: 0;
+  border-bottom: 1px solid var(--paperpet-dashboard-line);
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: start;
+}
+
+.paperpet-source-list__row span {
+  color: var(--paperpet-dashboard-muted);
+  text-align: end;
+}
+
+.paperpet-source-list__row[aria-pressed="true"] strong {
+  color: var(--paperpet-moss);
 }
 
 .paperpet-session-list__note-editing {
@@ -934,6 +971,16 @@
 }
 
 @media (max-width: 600px) {
+  .paperpet-source-list__row {
+    align-items: start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .paperpet-source-list__row span {
+    text-align: start;
+  }
+
   .paperpet-dashboard__aside,
   .paperpet-paper-list__item,
   .paperpet-session-list > div {

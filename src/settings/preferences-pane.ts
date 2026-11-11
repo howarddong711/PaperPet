@@ -5,6 +5,7 @@ import {
 } from "./paperpet-settings";
 import type { CharacterPackStatus, PaperPetDiagnostics } from "../runtime";
 import type { InstalledCharacterPackRecord } from "../storage/paperpet-database";
+import type { SyncStatus } from "../sync/sync-types";
 
 declare const document: Document;
 
@@ -24,6 +25,10 @@ interface PaperPetPreferenceAPI {
   ) => string;
   resetPetPosition: () => void;
   getDiagnostics: () => PaperPetDiagnostics;
+  getSyncStatus: () => SyncStatus;
+  syncNow: () => Promise<void>;
+  readSyncNow: () => Promise<void>;
+  writeSyncNow: () => Promise<void>;
 }
 
 const PREVIEW_MODES = [
@@ -101,6 +106,39 @@ function renderDiagnostics(api: PaperPetPreferenceAPI): void {
       : "无";
   if (lookup) lookup.textContent = diagnostics.lastTitleLookup;
   if (result) result.textContent = diagnostics.lastTitleResult;
+}
+
+function renderSyncStatus(api: PaperPetPreferenceAPI): void {
+  const value = document.getElementById("paperpet-sync-status-value");
+  if (!value) return;
+  const status = api.getSyncStatus();
+  value.textContent = status.message;
+  (value as HTMLElement).dataset.state = status.code;
+  const local = document.getElementById("paperpet-sync-local-value");
+  if (local) {
+    local.textContent = status.lastLocalWriteAt
+      ? new Date(status.lastLocalWriteAt).toLocaleString()
+      : "尚未写入";
+  }
+  const count = document.getElementById("paperpet-sync-count-value");
+  if (count) {
+    count.textContent = `本机 ${status.localSessionCount ?? 0} · 其他设备 ${status.peerSessionCount ?? 0} · 已发现 ${status.peerCount ?? 0} 台其他设备`;
+  }
+  const peerTime = document.getElementById("paperpet-sync-peer-time-value");
+  if (peerTime) {
+    peerTime.textContent = status.lastPeerSeenAt
+      ? new Date(status.lastPeerSeenAt).toLocaleString()
+      : "尚未读取";
+  }
+  const confirmed = document.getElementById("paperpet-sync-confirmed-value");
+  if (confirmed) {
+    confirmed.textContent = `${status.peerConfirmedLocalCount ?? 0} / ${status.localSessionCount ?? 0} 条会话`;
+  }
+  for (const id of ["paperpet-sync-read", "paperpet-sync-write"]) {
+    const button = document.getElementById(id) as HTMLButtonElement | null;
+    if (button)
+      button.disabled = status.code === "disabled" || status.code === "syncing";
+  }
 }
 
 async function renderCharacterPackManager(
@@ -304,6 +342,7 @@ function init(): void {
       .then((saved) => {
         if (revision !== saveRevision) return;
         render(saved);
+        renderSyncStatus(api);
         setStatus("已保存到本机");
       })
       .catch((error: unknown) => {
@@ -373,6 +412,35 @@ function init(): void {
       commit();
     });
 
+  const runSyncAction = (
+    action: () => Promise<void>,
+    pending: string,
+  ): void => {
+    setStatus(pending);
+    void action()
+      .then(() => {
+        renderSyncStatus(api);
+        setStatus(api.getSyncStatus().message);
+      })
+      .catch((error: unknown) => {
+        renderSyncStatus(api);
+        setStatus(
+          `同步失败：${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+  };
+  document
+    .getElementById("paperpet-sync-read")
+    ?.addEventListener("click", () => {
+      runSyncAction(() => api.readSyncNow(), "正在请求 Zotero 同步并读取…");
+    });
+  document
+    .getElementById("paperpet-sync-write")
+    ?.addEventListener("click", () => {
+      runSyncAction(() => api.writeSyncNow(), "正在写入本机 Zotero…");
+    });
+  document.defaultView?.setInterval(() => renderSyncStatus(api), 10_000);
+
   document
     .getElementById("paperpet-open-report")
     ?.addEventListener("click", () => {
@@ -422,6 +490,7 @@ function init(): void {
   render(api.getSettings());
   renderCharacterPackStatus(api);
   renderDiagnostics(api);
+  renderSyncStatus(api);
   void renderCharacterPackManager(api, root, setStatus, () =>
     updatePreview(read()),
   );
@@ -500,6 +569,7 @@ document.addEventListener(
         if (api) {
           renderCharacterPackStatus(api);
           renderDiagnostics(api);
+          renderSyncStatus(api);
           refreshPreviewSources(api);
         }
       }

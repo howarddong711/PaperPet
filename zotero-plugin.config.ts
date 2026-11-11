@@ -37,7 +37,7 @@ export default defineConfig({
         },
         bundle: true,
         target: "firefox140",
-        outfile: ".scaffold/build/addon/content/scripts/paperpet.js",
+        outfile: "addon/content/scripts/paperpet.js",
       },
       {
         entryPoints: ["src/settings/preferences-pane.ts"],
@@ -46,8 +46,7 @@ export default defineConfig({
         },
         bundle: true,
         target: "firefox140",
-        outfile:
-          ".scaffold/build/addon/content/scripts/paperpet-preferences.js",
+        outfile: "addon/content/scripts/paperpet-preferences.js",
       },
     ],
   },

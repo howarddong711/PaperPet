@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_PAPERPET_SETTINGS,
   normalizePaperPetSettings,
+  PaperPetSettingsStore,
 } from "../src/settings/paperpet-settings";
+import type { PaperPetDatabase } from "../src/storage/paperpet-database";
 
 describe("normalizePaperPetSettings", () => {
   it("uses safe defaults for absent or invalid values", () => {
@@ -45,5 +47,29 @@ describe("normalizePaperPetSettings", () => {
         trackingEnabled: false,
       }),
     ).toMatchObject({ reduceMotion: true, trackingEnabled: false });
+  });
+});
+
+describe("PaperPetSettingsStore", () => {
+  it("keeps the sync switch local and does not republish preferences when only toggled", async () => {
+    const values = new Map<string, unknown>([
+      ["user_preferences_v1", { ...DEFAULT_PAPERPET_SETTINGS, petSize: 140, syncEnabled: false }],
+    ]);
+    const setSetting = vi.fn(async (key: string, value: unknown) => {
+      values.set(key, value);
+    });
+    const database = {
+      getSetting: async (key: string) => values.get(key),
+      setSetting,
+    } as unknown as PaperPetDatabase;
+    const store = new PaperPetSettingsStore(database);
+
+    const initial = await store.load();
+    await store.save({ ...initial, syncEnabled: true });
+
+    expect(values.get("sync_enabled_v1")).toBe(true);
+    expect(setSetting).not.toHaveBeenCalledWith("user_preferences_v1", expect.anything());
+    expect((await store.load()).petSize).toBe(140);
+    expect((await store.load()).syncEnabled).toBe(true);
   });
 });

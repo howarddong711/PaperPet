@@ -117,7 +117,7 @@ describe("note editing storage and reports", () => {
     );
   }
 
-  it("creates schema 2 and reopens it without adding columns twice", async () => {
+  it("creates schema 3 and reopens it without adding columns twice", async () => {
     await database.initialize();
     await database.close();
     await database.initialize();
@@ -125,7 +125,7 @@ describe("note editing storage and reports", () => {
       await connection.valueQueryAsync(
         "SELECT MAX(version) FROM schema_migrations",
       ),
-    ).toBe(2);
+    ).toBe(3);
     for (const table of [
       "reading_sessions",
       "daily_item_stats",
@@ -155,13 +155,18 @@ describe("note editing storage and reports", () => {
       INSERT INTO daily_item_stats VALUES (90, 75);
       CREATE TABLE item_totals (foreground_seconds REAL, effective_seconds REAL);
       INSERT INTO item_totals VALUES (90, 75);
+      CREATE TABLE settings (
+        key TEXT PRIMARY KEY,
+        value_json TEXT,
+        updated_at INTEGER
+      );
     `);
     await database.initialize();
     expect(
       await connection.valueQueryAsync(
         "SELECT MAX(version) FROM schema_migrations",
       ),
-    ).toBe(2);
+    ).toBe(3);
     for (const table of [
       "reading_sessions",
       "daily_item_stats",
@@ -295,7 +300,7 @@ describe("note editing storage and reports", () => {
       await database.initialize();
       await createSession();
       const exported = await database.exportJSON("reading");
-      expect(exported.schemaVersion).toBe(2);
+      expect(exported.schemaVersion).toBe(3);
       expect(exported.data.reading_sessions[0].note_editing_seconds).toBe(0.75);
       const payload: PaperPetBackup = structuredClone(exported);
       payload.schemaVersion = version;
@@ -334,11 +339,25 @@ describe("note editing storage and reports", () => {
     expect(await summedEditing("reading_sessions")).toBe(0.75);
   });
 
+  it("keeps this device's identity when importing settings from another device", async () => {
+    await database.initialize();
+    await database.setSetting("device_id", "local-device");
+    const backup = await database.exportJSON("settings");
+    const identity = backup.data.settings.find((row) => row.key === "device_id");
+    expect(identity).toBeDefined();
+    identity!.value_json = JSON.stringify("remote-device");
+    readJSON.mockResolvedValue(backup);
+
+    await database.importBackup("/virtual/other-device-settings.json", "settings");
+
+    expect(await database.getOrCreateDeviceID()).toBe("local-device");
+  });
+
   it("rejects unsupported backups before changing existing records", async () => {
     await database.initialize();
     await createSession();
     const payload = await database.exportJSON("reading");
-    readJSON.mockResolvedValue({ ...payload, schemaVersion: 3 });
+    readJSON.mockResolvedValue({ ...payload, schemaVersion: 4 });
     await expect(
       database.importBackup("/virtual/future-backup.json", "reading"),
     ).rejects.toThrow("unsupported schema");

@@ -26,6 +26,16 @@ export interface RecentReadingItem {
   lastReadAt: number;
 }
 
+export type ReadingSourceFilter =
+  "all" | "local" | "remote" | `device:${string}`;
+
+export interface ReadingSourceSummary {
+  deviceID: string;
+  sessionCount: number;
+  effectiveSeconds: number;
+  lastReadAt: number;
+}
+
 export interface ReadingOverviewData {
   daily: DailyReadingPoint[];
   behaviors: BehaviorCount[];
@@ -37,10 +47,13 @@ export interface ReadingOverviewData {
   paperCount: number;
   startDate: string;
   endDate: string;
+  localDeviceID: string;
+  sources: ReadingSourceSummary[];
 }
 
 export interface ReadingSessionRow {
   id: string;
+  deviceID: string;
   startedAt: number;
   endedAt?: number;
   foregroundSeconds: number;
@@ -52,6 +65,7 @@ export interface ReadingSessionRow {
 
 export interface ItemReadingDetail {
   item: RecentReadingItem;
+  localDeviceID: string;
   daily: DailyReadingPoint[];
   sessions: ReadingSessionRow[];
   selectionCount: number;
@@ -64,9 +78,29 @@ export class DashboardRepository {
   public async getOverview(
     range: number | { startDate: string; endDate: string } = 30,
     now = Date.now(),
+    source: ReadingSourceFilter = "all",
   ): Promise<ReadingOverviewData> {
     const normalized = normalizeRange(range, now);
     const { startDate, endDate, cutoff, endExclusive, days } = normalized;
+    const localDeviceID = await this.database.getOrCreateDeviceID();
+    const exactDeviceID = source.startsWith("device:")
+      ? source.slice(7)
+      : undefined;
+    const sourceClause =
+      source === "all"
+        ? ""
+        : source === "remote"
+          ? " AND device_id <> ?"
+          : " AND device_id = ?";
+    const eventSourceClause =
+      source === "all"
+        ? ""
+        : source === "remote"
+          ? " AND reading_sessions.device_id <> ?"
+          : " AND reading_sessions.device_id = ?";
+    const sourceParams =
+      source === "all" ? [] : [exactDeviceID ?? localDeviceID];
+    const rangeParams = [cutoff, endExclusive, ...sourceParams];
     const [
       dailyRows,
       behaviorRows,
@@ -76,6 +110,7 @@ export class DashboardRepository {
       noteEditingSeconds,
       sessionCount,
       paperCount,
+      sourceRows,
     ] = await Promise.all([
       this.database.db.queryAsync(
         `SELECT strftime('%Y-%m-%d', started_at / 1000, 'unixepoch', 'localtime') AS local_date,
@@ -84,10 +119,10 @@ export class DashboardRepository {
           SUM(note_editing_seconds) AS note_editing_seconds,
           COUNT(*) AS session_count
         FROM reading_sessions
-        WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0
+        WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0${sourceClause}
         GROUP BY local_date
         ORDER BY local_date`,
-        [cutoff, endExclusive],
+        rangeParams,
       ),
       this.database.db.queryAsync(
         `SELECT semantic_events.event_type, SUM(semantic_events.event_count) AS event_count
@@ -97,9 +132,10 @@ export class DashboardRepository {
           AND reading_sessions.started_at >= ? AND reading_sessions.started_at < ?
           AND reading_sessions.deleted = 0
           AND reading_sessions.excluded = 0
+          ${eventSourceClause}
         GROUP BY semantic_events.event_type
         ORDER BY event_count DESC`,
-        [cutoff, endExclusive, cutoff, endExclusive],
+        [cutoff, endExclusive, cutoff, endExclusive, ...sourceParams],
       ),
       this.database.db.queryAsync(
         `SELECT library_id, item_key, attachment_key, title_snapshot,
@@ -108,35 +144,44 @@ export class DashboardRepository {
           SUM(note_editing_seconds) AS note_editing_seconds,
           SUM(annotation_count) AS annotation_count, MAX(started_at) AS last_read_at
         FROM reading_sessions
-        WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0
+        WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0${sourceClause}
         GROUP BY library_id, item_key, attachment_key
         ORDER BY last_read_at DESC
         LIMIT 12`,
-        [cutoff, endExclusive],
+        rangeParams,
       ),
       this.database.db.valueQueryAsync<number>(
         `SELECT COALESCE(SUM(foreground_seconds), 0) FROM reading_sessions
-         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0`,
-        [cutoff, endExclusive],
+         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0${sourceClause}`,
+        rangeParams,
       ),
       this.database.db.valueQueryAsync<number>(
         `SELECT COALESCE(SUM(effective_seconds), 0) FROM reading_sessions
-         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0`,
-        [cutoff, endExclusive],
+         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0${sourceClause}`,
+        rangeParams,
       ),
       this.database.db.valueQueryAsync<number>(
         `SELECT COALESCE(SUM(note_editing_seconds), 0) FROM reading_sessions
-         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0`,
-        [cutoff, endExclusive],
+         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0${sourceClause}`,
+        rangeParams,
       ),
       this.database.db.valueQueryAsync<number>(
         `SELECT COUNT(*) FROM reading_sessions
-         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0`,
-        [cutoff, endExclusive],
+         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0${sourceClause}`,
+        rangeParams,
       ),
       this.database.db.valueQueryAsync<number>(
         `SELECT COUNT(DISTINCT library_id || ':' || item_key) FROM reading_sessions
-         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0`,
+         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0${sourceClause}`,
+        rangeParams,
+      ),
+      this.database.db.queryAsync(
+        `SELECT device_id, COUNT(*) AS session_count,
+          SUM(effective_seconds) AS effective_seconds,
+          MAX(started_at) AS last_read_at
+         FROM reading_sessions
+         WHERE started_at >= ? AND started_at < ? AND deleted = 0 AND excluded = 0
+         GROUP BY device_id ORDER BY last_read_at DESC`,
         [cutoff, endExclusive],
       ),
     ]);
@@ -178,12 +223,23 @@ export class DashboardRepository {
       paperCount: Number(paperCount ?? 0),
       startDate,
       endDate,
+      localDeviceID,
+      sources: (sourceRows ?? []).map((row) => {
+        const values = row as Record<string, unknown>;
+        return {
+          deviceID: String(values.device_id),
+          sessionCount: Number(values.session_count),
+          effectiveSeconds: Number(values.effective_seconds),
+          lastReadAt: Number(values.last_read_at),
+        };
+      }),
     };
   }
 
   public async getItemDetail(
     item: RecentReadingItem,
   ): Promise<ItemReadingDetail> {
+    const localDeviceID = await this.database.getOrCreateDeviceID();
     const [dailyRows, totalRows, sessionRows] = await Promise.all([
       this.database.db.queryAsync(
         `SELECT local_date,
@@ -210,7 +266,7 @@ export class DashboardRepository {
         [item.libraryID, item.itemKey, item.attachmentKey],
       ),
       this.database.db.queryAsync(
-        `SELECT id, started_at, ended_at, foreground_seconds,
+        `SELECT id, device_id, started_at, ended_at, foreground_seconds,
           effective_seconds, note_editing_seconds, annotation_count, excluded
         FROM reading_sessions
         WHERE library_id = ? AND item_key = ? AND attachment_key = ?
@@ -232,6 +288,7 @@ export class DashboardRepository {
       ),
     ]);
     return {
+      localDeviceID,
       item: totalRows?.length
         ? mapRecentItem(totalRows[0])
         : {
@@ -249,6 +306,7 @@ export class DashboardRepository {
         const values = row as Record<string, unknown>;
         return {
           id: String(values.id),
+          deviceID: String(values.device_id),
           startedAt: Number(values.started_at),
           endedAt:
             values.ended_at === null || values.ended_at === undefined

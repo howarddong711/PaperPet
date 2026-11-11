@@ -1,4 +1,13 @@
-const DATABASE_SCHEMA_VERSION = 2;
+const DATABASE_SCHEMA_VERSION = 3;
+
+import {
+  hashSyncPayload,
+  type SyncSessionRecord,
+  type SyncSemanticEventRecord,
+  type SyncSettingRecord,
+  type SyncSnapshot,
+  validateSyncSnapshot,
+} from "../sync/sync-types";
 
 export interface PaperPetBackup {
   format: "paperpet-backup";
@@ -121,6 +130,12 @@ const MIGRATION_2 = [
   "ALTER TABLE item_totals ADD COLUMN note_editing_seconds REAL NOT NULL DEFAULT 0",
 ] as const;
 
+const MIGRATION_3 = [
+  "ALTER TABLE reading_sessions ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE reading_sessions ADD COLUMN updated_by TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE settings ADD COLUMN updated_by TEXT NOT NULL DEFAULT ''",
+] as const;
+
 export interface DatabaseLocation {
   directoryPath: string;
   databasePath: string;
@@ -136,6 +151,12 @@ export interface InstalledCharacterPackRecord {
   validationJSON: string;
   enabled: boolean;
   installedAt: number;
+}
+
+export interface SyncMergeResult {
+  sessions: number;
+  events: number;
+  settings: number;
 }
 
 export class PaperPetDatabase {
@@ -181,7 +202,11 @@ export class PaperPetDatabase {
       return existing;
     }
     const deviceID = createUUID();
-    await this.setSetting("device_id", deviceID);
+    await this.db.queryAsync(
+      `INSERT INTO settings (key, value_json, updated_at, updated_by)
+       VALUES (?, ?, ?, ?)`,
+      ["device_id", JSON.stringify(deviceID), Date.now(), deviceID],
+    );
     return deviceID;
   }
 
@@ -197,13 +222,16 @@ export class PaperPetDatabase {
   }
 
   public async setSetting(key: string, value: unknown): Promise<void> {
+    const updatedBy =
+      key === "device_id" ? String(value) : await this.getOrCreateDeviceID();
     await this.db.queryAsync(
-      `INSERT INTO settings (key, value_json, updated_at)
-       VALUES (?, ?, ?)
+      `INSERT INTO settings (key, value_json, updated_at, updated_by)
+       VALUES (?, ?, ?, ?)
        ON CONFLICT(key) DO UPDATE SET
          value_json = excluded.value_json,
-         updated_at = excluded.updated_at`,
-      [key, JSON.stringify(value), Date.now()],
+         updated_at = excluded.updated_at,
+         updated_by = excluded.updated_by`,
+      [key, JSON.stringify(value), Date.now(), updatedBy],
     );
   }
 
@@ -330,10 +358,11 @@ export class PaperPetDatabase {
       return;
     }
     await this.db.executeTransaction(async () => {
+      const updatedBy = await this.getOrCreateDeviceID();
       for (const id of ids) {
         await this.db.queryAsync(
-          "UPDATE reading_sessions SET deleted = 1 WHERE id = ?",
-          [id],
+          "UPDATE reading_sessions SET deleted = 1, updated_at = ?, updated_by = ? WHERE id = ?",
+          [Date.now(), updatedBy, id],
         );
       }
       await this.rebuildAggregates();
@@ -348,9 +377,10 @@ export class PaperPetDatabase {
       return;
     }
     await this.db.executeTransaction(async () => {
+      const updatedBy = await this.getOrCreateDeviceID();
       await this.db.queryAsync(
-        "UPDATE reading_sessions SET excluded = ? WHERE id = ? AND deleted = 0",
-        [excluded ? 1 : 0, sessionID],
+        "UPDATE reading_sessions SET excluded = ?, updated_at = ?, updated_by = ? WHERE id = ? AND deleted = 0",
+        [excluded ? 1 : 0, Date.now(), updatedBy, sessionID],
       );
       await this.rebuildAggregates();
     });
@@ -403,6 +433,7 @@ export class PaperPetDatabase {
     }
     await this.db.executeTransaction(async () => {
       const scope = requestedScope ?? payload.scope ?? "all";
+      const localDeviceID = scope === "reading" ? undefined : await this.getOrCreateDeviceID();
       await this.clearScope(scope);
       for (const [table, rows] of Object.entries(payload.data)) {
         if (
@@ -430,7 +461,231 @@ export class PaperPetDatabase {
         "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?, ?)",
         [DATABASE_SCHEMA_VERSION, Date.now()],
       );
+      if (localDeviceID) {
+        await this.db.queryAsync(
+          `INSERT OR REPLACE INTO settings (key, value_json, updated_at, updated_by)
+           VALUES ('device_id', ?, ?, ?)`,
+          [JSON.stringify(localDeviceID), Date.now(), localDeviceID],
+        );
+      }
     });
+  }
+
+  public async exportSyncSnapshot(deviceID: string): Promise<SyncSnapshot> {
+    const sessions = (await this.db.queryAsync(
+      `SELECT id, device_id, library_id, item_key, attachment_key, title_snapshot,
+        started_at, ended_at, timezone, foreground_seconds, effective_seconds,
+        note_editing_seconds, annotation_count, excluded, deleted, model_version,
+        updated_at, updated_by
+       FROM reading_sessions`,
+    )) ?? [];
+    const events = (await this.db.queryAsync(
+      `SELECT id, session_id, event_type, started_at, ended_at, event_count, page_index
+       FROM semantic_events`,
+    )) ?? [];
+    const settings = (await this.db.queryAsync(
+      `SELECT key, value_json, updated_at, updated_by FROM settings
+       WHERE key = 'user_preferences_v1'`,
+    )) ?? [];
+    const payload: Omit<SyncSnapshot, "contentHash"> = {
+      format: "paperpet-sync",
+      schemaVersion: 1,
+      exportedAt: Date.now(),
+      exportedBy: deviceID,
+      sessions: sessions.map((row) => {
+        const values = row as Record<string, unknown>;
+        return {
+          id: String(values.id),
+          deviceID: String(values.device_id),
+          libraryRef: libraryRefFor(Number(values.library_id)),
+          itemKey: String(values.item_key),
+          sourceKey: String(values.attachment_key),
+          titleSnapshot: String(values.title_snapshot ?? ""),
+          startedAt: Number(values.started_at),
+          endedAt:
+            values.ended_at === null || values.ended_at === undefined
+              ? undefined
+              : Number(values.ended_at),
+          timezone: String(values.timezone),
+          foregroundSeconds: Number(values.foreground_seconds ?? 0),
+          effectiveSeconds: Number(values.effective_seconds ?? 0),
+          noteEditingSeconds: Number(values.note_editing_seconds ?? 0),
+          annotationCount: Number(values.annotation_count ?? 0),
+          excluded: Number(values.excluded) === 1,
+          deleted: Number(values.deleted) === 1,
+          modelVersion: Number(values.model_version ?? 1),
+          updatedAt: Number(values.updated_at ?? values.started_at),
+          updatedBy: String(values.updated_by || values.device_id || deviceID),
+        } satisfies SyncSessionRecord;
+      }),
+      events: events.map((row) => {
+        const values = row as Record<string, unknown>;
+        return {
+          id: String(values.id),
+          sessionID: String(values.session_id),
+          type: String(values.event_type),
+          startedAt: Number(values.started_at),
+          endedAt: Number(values.ended_at),
+          count: Number(values.event_count ?? 1),
+          pageIndex:
+            values.page_index === null || values.page_index === undefined
+              ? undefined
+              : Number(values.page_index),
+        } satisfies SyncSemanticEventRecord;
+      }),
+      settings: settings.map((row) => {
+        const values = row as Record<string, unknown>;
+        return {
+          key: String(values.key),
+          valueJSON: syncableSettingsJSON(String(values.value_json)),
+          updatedAt: Number(values.updated_at),
+          updatedBy: String(values.updated_by ?? ""),
+        } satisfies SyncSettingRecord;
+      }),
+    };
+    return {
+      ...payload,
+      contentHash: hashSyncPayload(payload),
+    };
+  }
+
+  public async mergeSyncSnapshot(input: unknown): Promise<SyncMergeResult> {
+    const snapshot = validateSyncSnapshot(input);
+    const result: SyncMergeResult = { sessions: 0, events: 0, settings: 0 };
+    await this.db.executeTransaction(async () => {
+      for (const session of snapshot.sessions) {
+        const libraryID = resolveLibraryID(session.libraryRef);
+        if (libraryID === undefined) continue;
+        const existing = await this.db.queryAsync(
+          "SELECT updated_at, updated_by FROM reading_sessions WHERE id = ?",
+          [session.id],
+        );
+        const current = existing?.[0] as Record<string, unknown> | undefined;
+        if (
+          current &&
+          compareVersion(
+            Number(current.updated_at ?? 0),
+            String(current.updated_by ?? ""),
+            session.updatedAt,
+            session.updatedBy,
+          ) >= 0
+        ) {
+          continue;
+        }
+        await this.db.queryAsync(
+          `INSERT INTO reading_sessions (
+            id, device_id, library_id, item_key, attachment_key, title_snapshot,
+            started_at, ended_at, timezone, foreground_seconds, effective_seconds,
+            note_editing_seconds, annotation_count, excluded, deleted, model_version,
+            updated_at, updated_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            device_id = excluded.device_id,
+            library_id = excluded.library_id,
+            item_key = excluded.item_key,
+            attachment_key = excluded.attachment_key,
+            title_snapshot = excluded.title_snapshot,
+            started_at = excluded.started_at,
+            ended_at = excluded.ended_at,
+            timezone = excluded.timezone,
+            foreground_seconds = excluded.foreground_seconds,
+            effective_seconds = excluded.effective_seconds,
+            note_editing_seconds = excluded.note_editing_seconds,
+            annotation_count = excluded.annotation_count,
+            excluded = excluded.excluded,
+            deleted = excluded.deleted,
+            model_version = excluded.model_version,
+            updated_at = excluded.updated_at,
+            updated_by = excluded.updated_by`,
+          [
+            session.id,
+            session.deviceID,
+            libraryID,
+            session.itemKey,
+            session.sourceKey,
+            session.titleSnapshot,
+            session.startedAt,
+            session.endedAt ?? null,
+            session.timezone,
+            session.foregroundSeconds,
+            session.effectiveSeconds,
+            session.noteEditingSeconds,
+            session.annotationCount,
+            session.excluded ? 1 : 0,
+            session.deleted ? 1 : 0,
+            session.modelVersion,
+            session.updatedAt,
+            session.updatedBy,
+          ],
+        );
+        result.sessions += 1;
+      }
+      for (const event of snapshot.events) {
+        const session = await this.db.valueQueryAsync<number>(
+          "SELECT 1 FROM reading_sessions WHERE id = ?",
+          [event.sessionID],
+        );
+        if (Number(session) !== 1) continue;
+        const existing = await this.db.valueQueryAsync<number>(
+          "SELECT 1 FROM semantic_events WHERE id = ?",
+          [event.id],
+        );
+        if (Number(existing) === 1) continue;
+        await this.db.queryAsync(
+          `INSERT OR IGNORE INTO semantic_events (
+            id, session_id, event_type, started_at, ended_at, event_count, page_index
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            event.id,
+            event.sessionID,
+            event.type,
+            event.startedAt,
+            event.endedAt,
+            event.count,
+            event.pageIndex ?? null,
+          ],
+        );
+        result.events += 1;
+      }
+      for (const setting of snapshot.settings) {
+        if (setting.key !== "user_preferences_v1") continue;
+        const current = await this.db.queryAsync(
+          "SELECT value_json, updated_at, updated_by FROM settings WHERE key = ?",
+          [setting.key],
+        );
+        const row = current?.[0] as Record<string, unknown> | undefined;
+        if (
+          row &&
+          compareVersion(
+            Number(row.updated_at ?? 0),
+            String(row.updated_by ?? ""),
+            setting.updatedAt,
+            setting.updatedBy,
+          ) >= 0
+        ) {
+          continue;
+        }
+        await this.db.queryAsync(
+          `INSERT INTO settings (key, value_json, updated_at, updated_by)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET
+             value_json = excluded.value_json,
+             updated_at = excluded.updated_at,
+             updated_by = excluded.updated_by`,
+          [
+            setting.key,
+            syncableSettingsJSON(setting.valueJSON),
+            setting.updatedAt,
+            setting.updatedBy,
+          ],
+        );
+        result.settings += 1;
+      }
+      if (result.sessions > 0 || result.events > 0) {
+        await this.rebuildAggregates();
+      }
+    });
+    return result;
   }
 
   private async rebuildAggregates(): Promise<void> {
@@ -573,7 +828,7 @@ export class PaperPetDatabase {
         `PaperPet database schema ${currentVersion} is newer than supported schema ${DATABASE_SCHEMA_VERSION}`,
       );
     }
-    const migrations = [MIGRATION_1.slice(1), MIGRATION_2];
+    const migrations = [MIGRATION_1.slice(1), MIGRATION_2, MIGRATION_3];
     for (let index = currentVersion; index < migrations.length; index += 1) {
       await connection.executeTransaction(async () => {
         for (const statement of migrations[index]) {
@@ -645,6 +900,62 @@ function validateBackupPath(path: string): string {
 function localDateFromTimestamp(timestamp: number): string {
   const date = new Date(timestamp);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function libraryRefFor(libraryID: number): string {
+  try {
+    const type = Zotero.Libraries.getType(libraryID);
+    if (type === "group") {
+      const library = Zotero.Libraries.get(libraryID) as
+        | (Zotero.Library & { groupID?: number })
+        | false;
+      if (library && library.groupID) return `group:${library.groupID}`;
+    }
+    if (type === "user") return "user";
+  } catch {
+    // Unit tests and an early Zotero startup can lack library metadata.
+  }
+  return `local:${libraryID}`;
+}
+
+function resolveLibraryID(libraryRef: string): number | undefined {
+  if (libraryRef === "user") {
+    return Zotero.Libraries.userLibraryID;
+  }
+  if (libraryRef.startsWith("group:")) {
+    const groupID = Number(libraryRef.slice("group:".length));
+    for (const library of Zotero.Libraries.getAll()) {
+      const candidate = library as Zotero.Library & { groupID?: number };
+      if (candidate.groupID === groupID) return candidate.libraryID;
+    }
+    return undefined;
+  }
+  if (libraryRef.startsWith("local:")) {
+    const libraryID = Number(libraryRef.slice("local:".length));
+    return Number.isFinite(libraryID) ? libraryID : undefined;
+  }
+  return undefined;
+}
+
+function compareVersion(
+  localUpdatedAt: number,
+  localUpdatedBy: string,
+  remoteUpdatedAt: number,
+  remoteUpdatedBy: string,
+): number {
+  return (
+    localUpdatedAt - remoteUpdatedAt ||
+    localUpdatedBy.localeCompare(remoteUpdatedBy)
+  );
+}
+
+function syncableSettingsJSON(valueJSON: string): string {
+  const values = JSON.parse(valueJSON) as unknown;
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    throw new Error("PaperPet sync settings are invalid");
+  }
+  const { syncEnabled: _localOnly, ...syncable } = values as Record<string, unknown>;
+  return JSON.stringify(syncable);
 }
 
 function isPaperPetBackup(value: unknown): value is PaperPetBackup {

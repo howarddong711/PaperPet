@@ -116,6 +116,52 @@
   padding-left: 10px;
 }
 
+.paperpet-sync-status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 14px 0 12px;
+  color: var(--paperpet-settings-muted);
+  font-size: 12px;
+}
+
+.paperpet-sync-status strong {
+  min-width: 0;
+  color: inherit;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-align: end;
+}
+
+#paperpet-sync-status-value[data-state="error"] {
+  color: var(--paperpet-red);
+}
+
+.paperpet-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.paperpet-sync-actions button {
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 6px;
+  padding: 7px 12px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.paperpet-sync-actions button:hover,
+.paperpet-sync-actions button:focus-visible {
+  border-color: #5d8068;
+  background: color-mix(in srgb, #5d8068 12%, transparent);
+  outline: none;
+}
+
 .paperpet-preferences__tools {
   display: flex;
   align-items: end;

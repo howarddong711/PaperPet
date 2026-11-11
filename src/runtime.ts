@@ -13,6 +13,9 @@ import {
 } from "./dashboard/dashboard-repository";
 import { DashboardView } from "./dashboard/dashboard-view";
 import { GrowthService } from "./growth/growth-service";
+import { PaperPetSyncCoordinator } from "./sync/sync-coordinator";
+import { ZoteroNoteCarrier } from "./sync/zotero-note-carrier";
+import type { SyncStatus } from "./sync/sync-types";
 import {
   DEFAULT_PAPERPET_SETTINGS,
   PaperPetSettingsStore,
@@ -61,16 +64,31 @@ export interface PublishedPreferenceAPI {
   ) => string;
   resetPetPosition: () => void;
   getDiagnostics: () => PaperPetDiagnostics;
+  getSyncStatus: () => SyncStatus;
+  syncNow: () => Promise<void>;
+  readSyncNow: () => Promise<void>;
+  writeSyncNow: () => Promise<void>;
 }
 
 export class PaperPetRuntime {
   public initialized = false;
 
   private readonly database = new PaperPetDatabase();
-  private readonly sessions = new ReadingSessionCoordinator(this.database);
+  private readonly sessions = new ReadingSessionCoordinator(
+    this.database,
+    () => this.sync.markDirty(),
+  );
   private readonly dashboardRepository = new DashboardRepository(this.database);
   private readonly growth = new GrowthService(this.database);
   private readonly settingsStore = new PaperPetSettingsStore(this.database);
+  private readonly sync = new PaperPetSyncCoordinator(
+    this.database,
+    new ZoteroNoteCarrier(),
+    async () => {
+      const settings = await this.settingsStore.load();
+      this.applySettings(settings);
+    },
+  );
   private settings: PaperPetSettings = { ...DEFAULT_PAPERPET_SETTINGS };
   private characterPackStatus: CharacterPackStatus = { state: "loading" };
   private diagnostics: PaperPetDiagnostics = {
@@ -97,6 +115,7 @@ export class PaperPetRuntime {
     await this.database.initialize();
     this.settings = await this.settingsStore.load();
     await this.sessions.initialize();
+    await this.sync.initialize(this.settings.syncEnabled);
     await this.database.pruneSemanticEvents(
       Date.now(),
       this.settings.semanticEventRetentionDays,
@@ -152,6 +171,7 @@ export class PaperPetRuntime {
               await this.sessions.discardActiveSession();
             }
             await this.database.importBackup(source, scope);
+            this.sync.markDirty();
             if (scope === "all" || scope === "settings") {
               this.applySettings(await this.settingsStore.load());
               const installer = new CharacterPackInstaller(
@@ -164,7 +184,9 @@ export class PaperPetRuntime {
           }
         },
         onExcludeSession: (sessionID, excluded) =>
-          this.database.excludeSession(sessionID, excluded),
+          this.database.excludeSession(sessionID, excluded).then(() => {
+            this.sync.markDirty();
+          }),
         onOpenItem: openReadingItem,
         onResolveItemTitle: (item) => this.resolveItemTitle(item),
       },
@@ -261,6 +283,7 @@ export class PaperPetRuntime {
     this.companions.clear();
     this.unpublishPreferenceAPI();
     await this.sessions.shutdown();
+    await this.sync.shutdown();
     await this.database.close();
     this.initialized = false;
   }
@@ -290,6 +313,12 @@ export class PaperPetRuntime {
       saveSettings: async (settings) => {
         const saved = await this.settingsStore.save(settings);
         this.applySettings(saved);
+        if (saved.syncEnabled && this.sync.getStatus().code === "disabled") {
+          await this.sync.initialize(true);
+        } else if (!saved.syncEnabled) {
+          await this.sync.disable();
+        }
+        this.sync.markDirty();
         await this.database.pruneSemanticEvents(
           Date.now(),
           saved.semanticEventRetentionDays,
@@ -311,6 +340,16 @@ export class PaperPetRuntime {
           overlay.resetPosition();
       },
       getDiagnostics: () => ({ ...this.diagnostics }),
+      getSyncStatus: () => this.sync.getStatus(),
+      syncNow: async () => {
+        await this.sessions.flush();
+        await this.sync.syncNow();
+      },
+      readSyncNow: () => this.sync.readNow(),
+      writeSyncNow: async () => {
+        await this.sessions.flush();
+        await this.sync.writeNow();
+      },
     };
     (Zotero as unknown as { PaperPet?: PublishedPreferenceAPI }).PaperPet =
       preferenceAPI;

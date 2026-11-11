@@ -66,7 +66,10 @@ export class ReadingSessionCoordinator {
   private deviceID = "";
   private writeChain: Promise<void> = Promise.resolve();
 
-  public constructor(private readonly database: PaperPetDatabase) {}
+  public constructor(
+    private readonly database: PaperPetDatabase,
+    private readonly onPersist?: () => void,
+  ) {}
 
   public async initialize(): Promise<void> {
     this.deviceID = await this.database.getOrCreateDeviceID();
@@ -173,6 +176,13 @@ export class ReadingSessionCoordinator {
     await this.writeChain;
   }
 
+  public async flush(now = Date.now()): Promise<void> {
+    if (this.active) {
+      this.queueFlush(this.active, false, now);
+    }
+    await this.writeChain;
+  }
+
   public async clearData(): Promise<void> {
     // Drop the in-memory session without persisting it, then wait for any
     // already queued insert/flush before deleting the stored records.
@@ -213,8 +223,8 @@ export class ReadingSessionCoordinator {
       await this.database.db.queryAsync(
         `INSERT INTO reading_sessions (
           id, device_id, library_id, item_key, attachment_key, title_snapshot,
-          started_at, timezone, model_version
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          started_at, timezone, model_version, updated_at, updated_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           session.id,
           this.deviceID,
@@ -225,6 +235,8 @@ export class ReadingSessionCoordinator {
           observedAt,
           timezone,
           MODEL_VERSION,
+          observedAt,
+          this.deviceID,
         ],
       );
     });
@@ -269,7 +281,9 @@ export class ReadingSessionCoordinator {
              foreground_seconds = foreground_seconds + ?,
              effective_seconds = effective_seconds + ?,
              note_editing_seconds = note_editing_seconds + ?,
-             annotation_count = annotation_count + ?
+             annotation_count = annotation_count + ?,
+             updated_at = ?,
+             updated_by = ?
            WHERE id = ?`,
           [
             finish ? observedAt : null,
@@ -277,6 +291,8 @@ export class ReadingSessionCoordinator {
             effectiveDelta,
             noteEditingDelta,
             annotationDelta,
+            observedAt,
+            this.deviceID,
             session.id,
           ],
         );
@@ -441,7 +457,10 @@ export class ReadingSessionCoordinator {
 
   private enqueue(operation: () => Promise<void>): void {
     this.writeChain = this.writeChain
-      .then(operation)
+      .then(async () => {
+        await operation();
+        this.onPersist?.();
+      })
       .catch((error: unknown) => {
         Zotero.logError(
           error instanceof Error

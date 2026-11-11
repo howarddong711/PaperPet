@@ -7,7 +7,7 @@
   <html:div class="paperpet-preferences">
     <html:header class="paperpet-preferences__header">
       <html:span class="paperpet-preferences__eyebrow"
-        >本地偏好 · 0.5.1</html:span
+        >本地偏好 · 0.5.2</html:span
       >
       <html:h1>PaperPet</html:h1>
       <html:p>调整陪伴阅读时的外观、交互和阅读状态识别方式。</html:p>
@@ -170,6 +170,50 @@
         </html:label>
         <html:p class="paperpet-preferences__note">
           阅读时长与文献统计长期保留，这里只控制滚动、翻页等详细动作记录。
+        </html:p>
+      </html:section>
+
+      <html:section class="paperpet-preferences__section">
+        <html:h2>云同步</html:h2>
+        <html:label class="paperpet-preference paperpet-preference--toggle">
+          <html:input
+            id="paperpet-sync-enabled"
+            data-setting="syncEnabled"
+            type="checkbox"
+          />
+          <html:span>
+            <html:strong>同步 PaperPet 阅读数据</html:strong>
+            <html:small
+              >使用 Zotero 同步保存阅读会话、笔记编辑时长和会话修正，不同步 PDF 或笔记正文。</html:small
+            >
+          </html:span>
+        </html:label>
+        <html:div class="paperpet-sync-status">
+          <html:span>PaperPet 状态</html:span>
+          <html:strong id="paperpet-sync-status-value">未启用</html:strong>
+        </html:div>
+        <html:div class="paperpet-sync-status">
+          <html:span>本机 Zotero 笔记</html:span>
+          <html:strong id="paperpet-sync-local-value">尚未写入</html:strong>
+        </html:div>
+        <html:div class="paperpet-sync-status">
+          <html:span>阅读会话</html:span>
+          <html:strong id="paperpet-sync-count-value">本机 0 · 其他设备 0</html:strong>
+        </html:div>
+        <html:div class="paperpet-sync-status">
+          <html:span>最近读取其他设备</html:span>
+          <html:strong id="paperpet-sync-peer-time-value">尚未读取</html:strong>
+        </html:div>
+        <html:div class="paperpet-sync-status">
+          <html:span>另一设备已收到本机</html:span>
+          <html:strong id="paperpet-sync-confirmed-value">0 / 0 条会话</html:strong>
+        </html:div>
+        <html:div class="paperpet-sync-actions">
+          <html:button id="paperpet-sync-read" type="button">从 Zotero 读取</html:button>
+          <html:button id="paperpet-sync-write" type="button">写入本机 Zotero</html:button>
+        </html:div>
+        <html:p class="paperpet-preferences__note">
+          两台设备需登录同一个 Zotero 账号。“从 Zotero 读取”会请求 Zotero 数据同步；新笔记到达后也会自动读取。云端传输由 Zotero 完成，与 PDF 附件使用 Zotero 存储或 WebDAV 无关。阅读报告可按设备查看来源。
         </html:p>
       </html:section>
     </html:div>
